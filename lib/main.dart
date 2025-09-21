@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+
+// 👇 importa el paquete de localizaciones
+import 'package:flutter_localizations/flutter_localizations.dart';
+
 import 'screens/login_page.dart';
 import 'screens/home_screen.dart';
 import 'screens/premium_info_page.dart';
@@ -33,6 +37,18 @@ class MyApp extends StatelessWidget {
           labelLarge: TextStyle(fontSize: 20.0, fontWeight: FontWeight.w600),
         ),
       ),
+
+      // 👇 Añadir soporte de localización
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('es', 'ES'), // Español
+        Locale('en', 'US'), // Inglés
+      ],
+
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {

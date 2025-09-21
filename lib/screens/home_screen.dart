@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_service.dart';
+import 'recipes/recipe_list_page.dart';
+import 'premium_info_page.dart';
+import 'menus/menu_list_page.dart'; // ✅ cambia aquí
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -35,8 +38,15 @@ class HomeScreen extends StatelessWidget {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
+
           final isPremium = snapshot.data!;
 
+          if (!isPremium) {
+            // 🔹 Usuarios no premium → página informativa
+            return const PremiumInfoPage();
+          }
+
+          // 🔹 Usuarios premium → navegación principal
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -47,40 +57,50 @@ class HomeScreen extends StatelessWidget {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 40),
+
+                // 🔹 Ver recetas
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 20),
                     textStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                   ),
                   onPressed: () {
-                    // TODO: ir a Menús
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => RecipeListPage()),
+                    );
                   },
-                  child: const Text("Ver menús"),
+                  child: const Text("Ver recetas"),
                 ),
                 const SizedBox(height: 20),
-                if (isPremium) ...[
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 20),
-                      textStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                    ),
-                    onPressed: () {
-                      // TODO: ir a Nueva Receta
-                    },
-                    child: const Text("Nueva Receta"),
+
+                // 🔹 Menú semanal
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 20),
+                    textStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(height: 20),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 20),
-                      textStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                    ),
-                    onPressed: () {
-                      // TODO: ir a Programar Pedido
-                    },
-                    child: const Text("Programar Pedido"),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => MenuListPage()), // ✅ ir a lista de menús
+                    );
+                  },
+                  child: const Text("Planificación semanal"),
+                ),
+                const SizedBox(height: 20),
+
+                // 🔹 Programar pedido (futuro PDF)
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 20),
+                    textStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                   ),
-                ],
+                  onPressed: () {
+                    // TODO: ir a pantalla de generación de PDF del pedido
+                  },
+                  child: const Text("Generar pedido semanal"),
+                ),
               ],
             ),
           );
