@@ -4,14 +4,15 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_service.dart';
 import 'recipes/recipe_list_page.dart';
 import 'premium_info_page.dart';
-import 'menus/menu_list_page.dart'; // ✅ cambia aquí
+import 'menus/menu_list_page.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   Future<bool> _getIsPremium() async {
     final uid = FirebaseAuth.instance.currentUser!.uid;
-    final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+    final doc =
+    await FirebaseFirestore.instance.collection('users').doc(uid).get();
     return doc['isPremium'] ?? false;
   }
 
@@ -42,70 +43,103 @@ class HomeScreen extends StatelessWidget {
           final isPremium = snapshot.data!;
 
           if (!isPremium) {
-            // 🔹 Usuarios no premium → página informativa
             return const PremiumInfoPage();
           }
 
-          // 🔹 Usuarios premium → navegación principal
           return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  "Bienvenido, ${FirebaseAuth.instance.currentUser!.displayName ?? "Usuario"}",
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 40),
-
-                // 🔹 Ver recetas
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 20),
-                    textStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // 🔹 Logo en grande
+                  Image.asset(
+                    "assets/icon/lolaicon.png",
+                    width: 160,
+                    height: 160,
                   ),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => RecipeListPage()),
-                    );
-                  },
-                  child: const Text("Ver recetas"),
-                ),
-                const SizedBox(height: 20),
+                  const SizedBox(height: 15),
 
-                // 🔹 Menú semanal
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 20),
-                    textStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  // 🔹 Nombre de la app
+                  const Text(
+                    "WillCooks",
+                    style: TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.deepPurple,
+                      letterSpacing: 1.5,
+                    ),
                   ),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => MenuListPage()), // ✅ ir a lista de menús
-                    );
-                  },
-                  child: const Text("Planificación semanal"),
-                ),
-                const SizedBox(height: 20),
 
-                // 🔹 Programar pedido (futuro PDF)
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 20),
-                    textStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  const SizedBox(height: 30),
+
+                  // 🔹 Bienvenida al usuario
+                  Text(
+                    "Bienvenido, ${FirebaseAuth.instance.currentUser!.displayName ?? "Usuario"}",
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
-                  onPressed: () {
-                    // TODO: ir a pantalla de generación de PDF del pedido
-                  },
-                  child: const Text("Generar pedido semanal"),
-                ),
-              ],
+
+                  const SizedBox(height: 40),
+
+                  // 🔹 Botones principales
+                  _buildMenuButton(
+                    context,
+                    label: "Ver recetas",
+                    icon: Icons.restaurant_menu,
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => RecipeListPage()),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  _buildMenuButton(
+                    context,
+                    label: "Planificación semanal",
+                    icon: Icons.calendar_month,
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => MenuListPage()),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  _buildMenuButton(
+                    context,
+                    label: "Generar pedido semanal",
+                    icon: Icons.shopping_cart,
+                    onPressed: () {
+                      // TODO: ir a pantalla de pedido PDF
+                    },
+                  ),
+                ],
+              ),
             ),
           );
         },
       ),
+    );
+  }
+
+  /// 🔹 Método helper para botones con icono
+  Widget _buildMenuButton(BuildContext context,
+      {required String label,
+        required IconData icon,
+        required VoidCallback onPressed}) {
+    return ElevatedButton.icon(
+      style: ElevatedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 18),
+        textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      icon: Icon(icon, size: 26),
+      onPressed: onPressed,
+      label: Text(label),
     );
   }
 }
