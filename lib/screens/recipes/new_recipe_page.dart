@@ -3,7 +3,9 @@ import 'package:uuid/uuid.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../models/recipe.dart';
 import '../../models/ingredient.dart';
+import '../../models/ingredient_base.dart';
 import '../../services/recipe_service.dart';
+import '../../services/ingredient_base_service.dart';
 
 class NewRecipePage extends StatefulWidget {
   const NewRecipePage({super.key});
@@ -16,124 +18,137 @@ class _NewRecipePageState extends State<NewRecipePage> {
   final _nameController = TextEditingController();
   final List<Ingredient> _ingredients = [];
   final RecipeService _recipeService = RecipeService();
+  final IngredientBaseService _ingredientBaseService = IngredientBaseService();
 
-  void _addIngredientDialog() {
-    final nameCtrl = TextEditingController();
+  /// 🔹 Diálogo añadir ingrediente
+  void _addIngredientDialog() async {
+    final bases = await _ingredientBaseService.getAll().first;
+
+    IngredientBase? selectedBase;
+
     final amountCtrl = TextEditingController();
     final unitCtrl = TextEditingController();
     final purchaseUnitCtrl = TextEditingController();
-    final conversionCtrl = TextEditingController();
-    final densityCtrl = TextEditingController(); // ✅ nuevo
+    final factorCtrl = TextEditingController();
+    final densityCtrl = TextEditingController();
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Nuevo ingrediente"),
-        content: SingleChildScrollView(
-          child: Column(
-            children: [
-              TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: "Nombre")),
-              TextField(controller: amountCtrl, decoration: const InputDecoration(labelText: "Cantidad por niño"), keyboardType: TextInputType.number),
-              TextField(controller: unitCtrl, decoration: const InputDecoration(labelText: "Unidad (ej. g, ml)")),
-              TextField(controller: purchaseUnitCtrl, decoration: const InputDecoration(labelText: "Unidad de compra (ej. kg, L)")),
-              TextField(controller: conversionCtrl, decoration: const InputDecoration(labelText: "Factor de conversión (ej. 1000)"), keyboardType: TextInputType.number),
-              TextField(controller: densityCtrl, decoration: const InputDecoration(labelText: "Densidad (opcional)"), keyboardType: TextInputType.number), // ✅ nuevo
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            child: const Text("Cancelar"),
-            onPressed: () => Navigator.pop(context),
-          ),
-          ElevatedButton(
-            child: const Text("Añadir"),
-            onPressed: () {
-              if (nameCtrl.text.isEmpty || amountCtrl.text.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Completa al menos nombre y cantidad")),
-                );
-                return;
-              }
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: const Text("Nuevo ingrediente"),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButtonFormField<IngredientBase>(
+                      value: selectedBase,
+                      items: bases
+                          .map((b) =>
+                          DropdownMenuItem(value: b, child: Text(b.name)))
+                          .toList(),
+                      onChanged: (val) {
+                        setStateDialog(() {
+                          selectedBase = val;
+                          if (val != null) {
+                            unitCtrl.text = val.defaultUnit;
+                            purchaseUnitCtrl.text = val.purchaseUnit;
+                            factorCtrl.text = val.conversionFactor.toString();
+                            densityCtrl.text = val.density?.toString() ?? "";
+                          }
+                        });
+                      },
+                      decoration:
+                      const InputDecoration(labelText: "Ingrediente base"),
+                    ),
+                    TextField(
+                      controller: amountCtrl,
+                      decoration: const InputDecoration(
+                          labelText: "Cantidad por niño"),
+                      keyboardType: TextInputType.number,
+                    ),
+                    TextField(
+                      controller: unitCtrl,
+                      decoration: const InputDecoration(labelText: "Unidad"),
+                    ),
+                    TextField(
+                      controller: purchaseUnitCtrl,
+                      decoration:
+                      const InputDecoration(labelText: "Unidad de compra"),
+                    ),
+                    TextField(
+                      controller: factorCtrl,
+                      decoration: const InputDecoration(
+                          labelText: "Factor de conversión"),
+                      keyboardType: TextInputType.number,
+                    ),
+                    TextField(
+                      controller: densityCtrl,
+                      decoration:
+                      const InputDecoration(labelText: "Densidad (opcional)"),
+                      keyboardType: TextInputType.number,
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text("Cancelar")),
+                ElevatedButton(
+                  onPressed: () {
+                    if (selectedBase == null) return;
 
-              setState(() {
-                _ingredients.add(Ingredient(
-                  ingredientId: const Uuid().v4(),
-                  name: nameCtrl.text,
-                  amountPerChild: double.tryParse(amountCtrl.text) ?? 0,
-                  unit: unitCtrl.text,
-                  purchaseUnit: purchaseUnitCtrl.text,
-                  conversionFactor: double.tryParse(conversionCtrl.text) ?? 1,
-                  density: densityCtrl.text.isNotEmpty
-                      ? double.tryParse(densityCtrl.text)
-                      : null,
-                ));
-              });
-              Navigator.pop(context);
-            },
-          ),
-        ],
-      ),
+                    setState(() {
+                      _ingredients.add(Ingredient(
+                        ingredientId: selectedBase!.id,
+                        name: selectedBase!.name,
+                        amountPerChild:
+                        double.tryParse(amountCtrl.text) ?? 0,
+                        unit: unitCtrl.text,
+                        purchaseUnit: purchaseUnitCtrl.text,
+                        conversionFactor:
+                        double.tryParse(factorCtrl.text) ?? 1,
+                        density: densityCtrl.text.isNotEmpty
+                            ? double.tryParse(densityCtrl.text)
+                            : null,
+                      ));
+                    });
+
+                    Navigator.pop(context);
+                  },
+                  child: const Text("Añadir"),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
-  void _editIngredientDialog(int index, Ingredient ing) {
-    final nameCtrl = TextEditingController(text: ing.name);
-    final amountCtrl = TextEditingController(text: ing.amountPerChild.toString());
-    final unitCtrl = TextEditingController(text: ing.unit);
-    final purchaseUnitCtrl = TextEditingController(text: ing.purchaseUnit);
-    final conversionCtrl = TextEditingController(text: ing.conversionFactor.toString());
-    final densityCtrl = TextEditingController(text: ing.density?.toString() ?? ""); // ✅ nuevo
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Editar ingrediente"),
-        content: SingleChildScrollView(
-          child: Column(
-            children: [
-              TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: "Nombre")),
-              TextField(controller: amountCtrl, decoration: const InputDecoration(labelText: "Cantidad por niño"), keyboardType: TextInputType.number),
-              TextField(controller: unitCtrl, decoration: const InputDecoration(labelText: "Unidad (ej. g, ml)")),
-              TextField(controller: purchaseUnitCtrl, decoration: const InputDecoration(labelText: "Unidad de compra (ej. kg, L)")),
-              TextField(controller: conversionCtrl, decoration: const InputDecoration(labelText: "Factor de conversión (ej. 1000)"), keyboardType: TextInputType.number),
-              TextField(controller: densityCtrl, decoration: const InputDecoration(labelText: "Densidad (opcional)"), keyboardType: TextInputType.number), // ✅ nuevo
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            child: const Text("Cancelar"),
-            onPressed: () => Navigator.pop(context),
-          ),
-          ElevatedButton(
-            child: const Text("Guardar cambios"),
-            onPressed: () {
-              setState(() {
-                _ingredients[index] = Ingredient(
-                  ingredientId: ing.ingredientId, // mantener el mismo ID
-                  name: nameCtrl.text,
-                  amountPerChild: double.tryParse(amountCtrl.text) ?? 0,
-                  unit: unitCtrl.text,
-                  purchaseUnit: purchaseUnitCtrl.text,
-                  conversionFactor: double.tryParse(conversionCtrl.text) ?? 1,
-                  density: densityCtrl.text.isNotEmpty
-                      ? double.tryParse(densityCtrl.text)
-                      : null,
-                );
-              });
-              Navigator.pop(context);
-            },
-          ),
-        ],
-      ),
-    );
+  /// 🔹 Botón rápido: añadir Aceite
+  void _addAceite() {
+    setState(() {
+      _ingredients.add(Ingredient(
+        ingredientId: const Uuid().v4(),
+        name: "Aceite",
+        amountPerChild: 0,
+        unit: "g",
+        purchaseUnit: "L",
+        conversionFactor: 920,
+        density: 0.92,
+      ));
+    });
   }
 
   Future<void> _saveRecipe() async {
     if (_nameController.text.isEmpty || _ingredients.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Añade un nombre y al menos un ingrediente")),
+        const SnackBar(
+            content: Text("Añade un nombre y al menos un ingrediente")),
       );
       return;
     }
@@ -147,13 +162,7 @@ class _NewRecipePageState extends State<NewRecipePage> {
     );
 
     await _recipeService.addRecipe(recipe);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Receta guardada con éxito 🎉")),
-      );
-      Navigator.pop(context);
-    }
+    if (mounted) Navigator.pop(context);
   }
 
   @override
@@ -166,8 +175,8 @@ class _NewRecipePageState extends State<NewRecipePage> {
           children: [
             TextField(
               controller: _nameController,
-              style: const TextStyle(fontSize: 20),
-              decoration: const InputDecoration(labelText: "Nombre de la receta"),
+              decoration:
+              const InputDecoration(labelText: "Nombre de la receta"),
             ),
             const SizedBox(height: 20),
             Expanded(
@@ -176,44 +185,46 @@ class _NewRecipePageState extends State<NewRecipePage> {
                 itemBuilder: (context, index) {
                   final ing = _ingredients[index];
                   return Card(
-                    margin: const EdgeInsets.symmetric(vertical: 6),
                     child: ListTile(
                       title: Text("${ing.name} - ${ing.amountPerChild}${ing.unit}"),
-                      subtitle: Text(
-                        "Compra en ${ing.purchaseUnit} (factor ${ing.conversionFactor})"
-                            "${ing.density != null ? ", Densidad: ${ing.density}" : ""}",
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit, color: Colors.blue),
-                            onPressed: () => _editIngredientDialog(index, ing),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red),
-                            onPressed: () {
-                              setState(() {
-                                _ingredients.removeAt(index);
-                              });
-                            },
-                          ),
-                        ],
+                      subtitle: Text("Compra en ${ing.purchaseUnit}, "
+                          "Factor: ${ing.conversionFactor}"
+                          "${ing.density != null ? ", Densidad: ${ing.density}" : ""}"),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete),
+                        onPressed: () =>
+                            setState(() => _ingredients.removeAt(index)),
                       ),
                     ),
                   );
                 },
               ),
             ),
-            ElevatedButton(
-              onPressed: _addIngredientDialog,
-              child: const Text("Añadir ingrediente"),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                FloatingActionButton(
+                  heroTag: "btnIngrediente",
+                  onPressed: _addIngredientDialog,
+                  child: const Icon(Icons.add),
+                ),
+                ElevatedButton(
+                  onPressed: _addAceite,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 14),
+                  ),
+                  child: const Text("Aceite",
+                      style: TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold)),
+                ),
+              ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 20),
             ElevatedButton(
-              onPressed: _saveRecipe,
-              child: const Text("Guardar receta"),
-            ),
+                onPressed: _saveRecipe,
+                child: const Text("Guardar receta")),
           ],
         ),
       ),

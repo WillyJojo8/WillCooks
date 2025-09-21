@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_service.dart';
+import 'ingredients/ingredient_base_list_page.dart'; // ✅ Importamos la lista de ingredientes base
 import 'recipes/recipe_list_page.dart';
 import 'premium_info_page.dart';
 import 'menus/menu_list_page.dart';
+import 'settings_page.dart'; // ✅ Importamos la nueva pantalla de ajustes
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -27,6 +29,16 @@ class HomeScreen extends StatelessWidget {
           style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
         ),
         actions: [
+          // ✅ Botón de Ajustes
+          IconButton(
+            icon: const Icon(Icons.settings, size: 28),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SettingsPage()),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.logout, size: 28),
             onPressed: () => authService.signOut(),
@@ -111,10 +123,22 @@ class HomeScreen extends StatelessWidget {
                   const SizedBox(height: 20),
                   _buildMenuButton(
                     context,
-                    label: "Generar pedido semanal",
-                    icon: Icons.shopping_cart,
+                    label: "Inventario",
+                    icon: Icons.inventory,
                     onPressed: () {
-                      // TODO: ir a pantalla de pedido PDF
+                      // TODO: ir a pantalla de Inventario
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  _buildMenuButton(
+                    context,
+                    label: "Ingredientes base",
+                    icon: Icons.kitchen,
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => IngredientBaseListPage()),
+                      );
                     },
                   ),
                 ],
@@ -134,7 +158,8 @@ class HomeScreen extends StatelessWidget {
     return ElevatedButton.icon(
       style: ElevatedButton.styleFrom(
         padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 18),
-        textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        textStyle:
+        const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
       icon: Icon(icon, size: 26),

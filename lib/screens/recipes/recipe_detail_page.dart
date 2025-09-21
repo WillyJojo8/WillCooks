@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../models/recipe.dart';
 import '../../models/ingredient.dart';
+import '../../models/ingredient_base.dart';
 import '../../services/recipe_service.dart';
+import '../../services/ingredient_base_service.dart';
 
 class RecipeDetailPage extends StatefulWidget {
   final Recipe recipe;
@@ -14,17 +16,18 @@ class RecipeDetailPage extends StatefulWidget {
 
 class _RecipeDetailPageState extends State<RecipeDetailPage> {
   final RecipeService _recipeService = RecipeService();
+  final IngredientBaseService _ingredientBaseService = IngredientBaseService();
+
   late List<Ingredient> _ingredients;
   late String _recipeName;
 
   @override
   void initState() {
     super.initState();
-    _ingredients = List.from(widget.recipe.ingredients); // copia editable
+    _ingredients = List.from(widget.recipe.ingredients);
     _recipeName = widget.recipe.name;
   }
 
-  /// 🔹 Guardar receta completa en Firestore
   Future<void> _saveRecipe() async {
     final updatedRecipe = Recipe(
       id: widget.recipe.id,
@@ -35,140 +38,159 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
     await _recipeService.addRecipe(updatedRecipe);
   }
 
-  /// 🔹 Crear copia de la receta
-  Future<void> _duplicateRecipe() async {
-    final newRecipe = Recipe(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      name: "Copia de $_recipeName",
-      userId: widget.recipe.userId,
-      ingredients: List.from(_ingredients),
-    );
+  /// 🔹 Diálogo añadir/editar ingrediente con opción de editar valores
+  void _ingredientDialog({int? index, Ingredient? ing}) async {
+    final bases = await _ingredientBaseService.getAll().first;
 
-    await _recipeService.addRecipe(newRecipe);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Copia creada: ${newRecipe.name} ✅")),
+    IngredientBase? selectedBase;
+    if (ing != null) {
+      selectedBase = bases.firstWhere(
+            (b) => b.id == ing.ingredientId,
+        orElse: () => bases.first,
       );
     }
-  }
 
-  /// 🔹 Diálogo para añadir o editar un ingrediente
-  void _ingredientDialog({int? index, Ingredient? ing}) {
-    final nameCtrl = TextEditingController(text: ing?.name ?? "");
     final amountCtrl =
     TextEditingController(text: ing?.amountPerChild.toString() ?? "");
     final unitCtrl = TextEditingController(text: ing?.unit ?? "");
-    final purchaseUnitCtrl = TextEditingController(text: ing?.purchaseUnit ?? "");
-    final conversionCtrl =
+    final purchaseUnitCtrl =
+    TextEditingController(text: ing?.purchaseUnit ?? "");
+    final factorCtrl =
     TextEditingController(text: ing?.conversionFactor.toString() ?? "");
     final densityCtrl =
     TextEditingController(text: ing?.density?.toString() ?? "");
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(index == null ? "Nuevo ingrediente" : "Editar ${ing!.name}"),
-        content: SingleChildScrollView(
-          child: Column(
-            children: [
-              TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: "Nombre")),
-              TextField(controller: amountCtrl, decoration: const InputDecoration(labelText: "Cantidad por niño"), keyboardType: TextInputType.number),
-              TextField(controller: unitCtrl, decoration: const InputDecoration(labelText: "Unidad (ej: g, ml)")),
-              TextField(controller: purchaseUnitCtrl, decoration: const InputDecoration(labelText: "Unidad de compra")),
-              TextField(controller: conversionCtrl, decoration: const InputDecoration(labelText: "Factor de conversión"), keyboardType: TextInputType.number),
-              TextField(controller: densityCtrl, decoration: const InputDecoration(labelText: "Densidad (opcional)"), keyboardType: TextInputType.number),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
-          ElevatedButton(
-            onPressed: () async {
-              final newIngredient = Ingredient(
-                ingredientId: ing?.ingredientId ?? DateTime.now().millisecondsSinceEpoch.toString(),
-                name: nameCtrl.text.trim(),
-                amountPerChild: double.tryParse(amountCtrl.text) ?? 0,
-                unit: unitCtrl.text.trim(),
-                purchaseUnit: purchaseUnitCtrl.text.trim(),
-                conversionFactor: double.tryParse(conversionCtrl.text) ?? 1,
-                density: densityCtrl.text.isNotEmpty ? double.tryParse(densityCtrl.text) : null,
-              );
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: Text(index == null
+                  ? "Nuevo ingrediente"
+                  : "Editar ingrediente"),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButtonFormField<IngredientBase>(
+                      value: selectedBase,
+                      items: bases
+                          .map((b) =>
+                          DropdownMenuItem(value: b, child: Text(b.name)))
+                          .toList(),
+                      onChanged: (val) {
+                        setStateDialog(() {
+                          selectedBase = val;
+                          if (val != null) {
+                            unitCtrl.text = val.defaultUnit;
+                            purchaseUnitCtrl.text = val.purchaseUnit;
+                            factorCtrl.text =
+                                val.conversionFactor.toString();
+                            densityCtrl.text = val.density?.toString() ?? "";
+                          }
+                        });
+                      },
+                      decoration: const InputDecoration(
+                          labelText: "Ingrediente base"),
+                    ),
+                    TextField(
+                      controller: amountCtrl,
+                      decoration: const InputDecoration(
+                          labelText: "Cantidad por niño"),
+                      keyboardType: TextInputType.number,
+                    ),
+                    TextField(
+                      controller: unitCtrl,
+                      decoration: const InputDecoration(labelText: "Unidad"),
+                    ),
+                    TextField(
+                      controller: purchaseUnitCtrl,
+                      decoration:
+                      const InputDecoration(labelText: "Unidad de compra"),
+                    ),
+                    TextField(
+                      controller: factorCtrl,
+                      decoration: const InputDecoration(
+                          labelText: "Factor de conversión"),
+                      keyboardType: TextInputType.number,
+                    ),
+                    TextField(
+                      controller: densityCtrl,
+                      decoration: const InputDecoration(
+                          labelText: "Densidad (opcional)"),
+                      keyboardType: TextInputType.number,
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Cancelar"),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    if (selectedBase == null) return;
 
-              setState(() {
-                if (index == null) {
-                  _ingredients.add(newIngredient);
-                } else {
-                  _ingredients[index] = newIngredient;
-                }
-              });
+                    final newIngredient = Ingredient(
+                      ingredientId: selectedBase!.id,
+                      name: selectedBase!.name,
+                      amountPerChild: double.tryParse(amountCtrl.text) ?? 0,
+                      unit: unitCtrl.text,
+                      purchaseUnit: purchaseUnitCtrl.text,
+                      conversionFactor: double.tryParse(factorCtrl.text) ?? 1,
+                      density: densityCtrl.text.isNotEmpty
+                          ? double.tryParse(densityCtrl.text)
+                          : null,
+                    );
 
-              await _saveRecipe();
+                    setState(() {
+                      if (index == null) {
+                        _ingredients.add(newIngredient);
+                      } else {
+                        _ingredients[index] = newIngredient;
+                      }
+                    });
 
-              if (context.mounted) Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(index == null ? "Ingrediente añadido ✅" : "Ingrediente actualizado ✅")),
-              );
-            },
-            child: const Text("Guardar"),
-          ),
-        ],
-      ),
+                    await _saveRecipe();
+                    if (context.mounted) Navigator.pop(context);
+                  },
+                  child: const Text("Guardar"),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
-  void _deleteIngredient(int index) async {
-    setState(() {
-      _ingredients.removeAt(index);
-    });
+  /// 🔹 Botón rápido: añadir Aceite
+  void _addAceite() async {
+    final aceite = Ingredient(
+      ingredientId: "aceite",
+      name: "Aceite",
+      amountPerChild: 0,
+      unit: "g",
+      purchaseUnit: "L",
+      conversionFactor: 920,
+      density: 0.92,
+    );
+
+    setState(() => _ingredients.add(aceite));
     await _saveRecipe();
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Ingrediente eliminado ✅")),
+        const SnackBar(content: Text("Ingrediente Aceite añadido ✅")),
       );
     }
   }
 
-  Future<void> _deleteRecipe() async {
-    await _recipeService.deleteRecipe(widget.recipe.id);
-    if (mounted) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Receta eliminada ✅")),
-      );
-    }
-  }
-
-  /// 🔹 Editar nombre de la receta
-  void _editRecipeName() {
-    final nameCtrl = TextEditingController(text: _recipeName);
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Editar nombre de la receta"),
-        content: TextField(
-          controller: nameCtrl,
-          decoration: const InputDecoration(labelText: "Nombre"),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
-          ElevatedButton(
-            onPressed: () async {
-              setState(() => _recipeName = nameCtrl.text.trim());
-              await _saveRecipe();
-
-              if (context.mounted) Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Nombre de receta actualizado ✅")),
-              );
-            },
-            child: const Text("Guardar"),
-          ),
-        ],
-      ),
-    );
+  void _deleteIngredient(int index) async {
+    setState(() => _ingredients.removeAt(index));
+    await _saveRecipe();
   }
 
   @override
@@ -179,42 +201,35 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
           _recipeName,
           style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
         ),
-        actions: [
-          IconButton(icon: const Icon(Icons.copy, color: Colors.purple), tooltip: "Duplicar receta", onPressed: _duplicateRecipe),
-          IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: _editRecipeName),
-          IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: _deleteRecipe),
-        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Ingredientes", style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 20),
             Expanded(
               child: ListView.builder(
                 itemCount: _ingredients.length,
                 itemBuilder: (context, index) {
                   final ing = _ingredients[index];
                   return Card(
-                    margin: const EdgeInsets.symmetric(vertical: 8),
                     child: ListTile(
-                      leading: const Icon(Icons.kitchen, size: 36),
                       title: Text(
-                        "${ing.name} - ${ing.amountPerChild}${ing.unit} por niño",
-                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-                      ),
-                      subtitle: Text(
-                        "Compra en ${ing.purchaseUnit}, Factor: ${ing.conversionFactor}"
-                            "${ing.density != null ? ", Densidad: ${ing.density}" : ""}",
-                        style: const TextStyle(fontSize: 16),
-                      ),
+                          "${ing.name} - ${ing.amountPerChild}${ing.unit}"),
+                      subtitle: Text("Compra en ${ing.purchaseUnit}, "
+                          "Factor: ${ing.conversionFactor}"
+                          "${ing.density != null ? ", Densidad: ${ing.density}" : ""}"),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _ingredientDialog(index: index, ing: ing)),
-                          IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _deleteIngredient(index)),
+                          IconButton(
+                            icon: const Icon(Icons.edit),
+                            onPressed: () =>
+                                _ingredientDialog(index: index, ing: ing),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete),
+                            onPressed: () => _deleteIngredient(index),
+                          ),
                         ],
                       ),
                     ),
@@ -222,12 +237,29 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
                 },
               ),
             ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                FloatingActionButton(
+                  heroTag: "btnIngredienteDetalle",
+                  onPressed: () => _ingredientDialog(),
+                  child: const Icon(Icons.add),
+                ),
+                ElevatedButton(
+                  onPressed: _addAceite,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 14),
+                  ),
+                  child: const Text("Aceite",
+                      style: TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
           ],
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _ingredientDialog(), // añadir ingrediente
-        child: const Icon(Icons.add),
       ),
     );
   }
