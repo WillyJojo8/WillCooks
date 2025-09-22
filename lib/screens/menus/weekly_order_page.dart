@@ -3,15 +3,19 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
+
 import '../../services/menu_service.dart';
 import '../../services/recipe_service.dart';
+import '../../services/inventory_service.dart';
 import '../../models/menu.dart';
 import '../../models/recipe.dart';
+import '../../models/inventory_item.dart';
 
 class WeeklyOrderPage extends StatelessWidget {
   final DateTime weekStart;
   final MenuService _menuService = MenuService();
   final RecipeService _recipeService = RecipeService();
+  final InventoryService _inventoryService = InventoryService();
 
   WeeklyOrderPage({super.key, required this.weekStart});
 
@@ -52,26 +56,70 @@ class WeeklyOrderPage extends StatelessWidget {
               }
 
               final allRecipes = recipeSnapshot.data!;
-              final totals = _calculateTotals(menu, allRecipes);
 
-              if (totals.isEmpty) {
-                return const Center(child: Text("No hay ingredientes esta semana"));
-              }
+              return StreamBuilder<List<InventoryItem>>(
+                stream: _inventoryService.getInventory(userId),
+                builder: (context, invSnapshot) {
+                  if (!invSnapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
 
-              return ListView.builder(
-                itemCount: totals.length,
-                itemBuilder: (context, index) {
-                  final item = totals[index];
-                  return Card(
-                    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    child: ListTile(
-                      leading: const Icon(Icons.shopping_cart),
-                      title: Text(item['name'], style: const TextStyle(fontSize: 18)),
-                      subtitle: Text(
-                        "Total: ${item['base'].toStringAsFixed(2)} ${item['unit']}\n"
-                            "Pedido: ${item['compra'].toStringAsFixed(2)} ${item['purchaseUnit']}",
+                  final inventory = invSnapshot.data!;
+                  final totals = _calculateTotals(menu, allRecipes, inventory);
+
+                  if (totals.isEmpty) {
+                    return const Center(child: Text("No hay ingredientes esta semana"));
+                  }
+
+                  return Column(
+                    children: [
+                      Expanded(
+                        child: ListView.builder(
+                          itemCount: totals.length,
+                          itemBuilder: (context, index) {
+                            final item = totals[index];
+                            return Card(
+                              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              child: ListTile(
+                                leading: const Icon(Icons.shopping_cart),
+                                title: Text(item['name'], style: const TextStyle(fontSize: 18)),
+                                subtitle: Text(
+                                  "Necesario: ${item['compra'].toStringAsFixed(2)} ${item['purchaseUnit']} "
+                                      "(Inventario: ${item['inventario'].toStringAsFixed(2)} → Pedido: ${item['pedido'].toStringAsFixed(2)})",
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 10),
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          // lo consumido del inventario = compra - pedido
+                          final Map<String, double> consumido = {
+                            for (final item in totals)
+                              if ((item['compra'] as double) > 0)
+                                (item['ingredientId'] as String):
+                                ((item['compra'] as double) - (item['pedido'] as double))
+                          };
+
+                          await _inventoryService.resetQuantities(userId, consumido);
+
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("Pedido realizado ✅")),
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.check),
+                        label: const Text("Pedido realizado"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
                   );
                 },
               );
@@ -82,19 +130,18 @@ class WeeklyOrderPage extends StatelessWidget {
     );
   }
 
-  /// 🔹 Normalizar nombres (quita tildes, símbolos y plurales simples)
   String _normalizeName(String name) {
-    var n = name.toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9 ]'), '') // quita símbolos
-        .trim();
-    if (n.endsWith('s')) {
-      n = n.substring(0, n.length - 1); // quita plural simple
-    }
+    var n = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9 ]'), '').trim();
+    if (n.endsWith('s')) n = n.substring(0, n.length - 1);
     return n;
   }
 
-  /// 🔹 Calcular totales consolidados
-  List<Map<String, dynamic>> _calculateTotals(Menu menu, List<Recipe> allRecipes) {
+  /// Totales consolidados con inventario
+  List<Map<String, dynamic>> _calculateTotals(
+      Menu menu,
+      List<Recipe> allRecipes,
+      List<InventoryItem> inventory,
+      ) {
     final Map<String, Map<String, dynamic>> totals = {};
 
     menu.dailyRecipes.forEach((day, recipeIds) {
@@ -113,39 +160,61 @@ class WeeklyOrderPage extends StatelessWidget {
             totals[key]!['base'] += totalBase;
             totals[key]!['compra'] += totalCompra;
           } else {
+            final inv = inventory.firstWhere(
+                  (i) => i.ingredientId == ing.ingredientId,
+              orElse: () => InventoryItem(
+                id: "",
+                ingredientId: ing.ingredientId,
+                name: ing.name,
+                quantity: 0,
+                unit: ing.purchaseUnit,
+                lastUpdated: DateTime.now(),
+                userId: menu.userId,
+              ),
+            );
+
             totals[key] = {
+              'ingredientId': ing.ingredientId,
               'name': _normalizeName(ing.name),
               'unit': ing.unit,
               'purchaseUnit': ing.purchaseUnit,
               'base': totalBase,
               'compra': totalCompra,
+              'inventario': inv.quantity,
+              'pedido': 0.0,
             };
           }
         }
       }
     });
 
-    // 🔹 Ordenamos alfabéticamente por nombre
+    // aplica inventario
+    for (final item in totals.values) {
+      final inventario = item['inventario'] as double;
+      final compra = item['compra'] as double;
+      item['pedido'] = (compra - inventario).clamp(0, double.infinity);
+    }
+
     final list = totals.values.toList();
-    list.sort((a, b) => a['name'].compareTo(b['name']));
-    // 🔹 Capitalizamos
+    list.sort((a, b) => (a['name'] as String).compareTo(b['name'] as String));
     return list.map((item) {
+      final name = item['name'] as String;
       return {
         ...item,
-        'name': item['name'][0].toUpperCase() + item['name'].substring(1),
+        'name': name.isEmpty ? name : name[0].toUpperCase() + name.substring(1),
       };
     }).toList();
   }
 
-  /// 🔹 Generar PDF con ingredientes por receta y totales consolidados
+  /// PDF con ingredientes por receta y día + totales consolidados con inventario
   Future<pw.Document> _generatePdf(String userId) async {
     final menu = await _menuService.getMenuForWeek(userId, weekStart).first;
     final pdf = pw.Document();
-
     if (menu == null) return pdf;
 
     final recipes = await _recipeService.getRecipesByUser(userId).first;
-    final totals = _calculateTotals(menu, recipes);
+    final inventory = await _inventoryService.getInventory(userId).first;
+    final totals = _calculateTotals(menu, recipes, inventory);
 
     pdf.addPage(
       pw.MultiPage(
@@ -158,13 +227,15 @@ class WeeklyOrderPage extends StatelessWidget {
             ),
             pw.SizedBox(height: 20),
 
-            // 🔹 Ingredientes por receta y día
+            // Ingredientes por receta y día
             ...menu.dailyRecipes.entries.expand((entry) {
               final day = entry.key;
               final recipeIds = entry.value;
               return recipeIds.map((recipeId) {
-                final recipe = recipes.firstWhere((r) => r.id == recipeId,
-                    orElse: () => Recipe(id: "", name: "?", ingredients: [], userId: menu.userId));
+                final recipe = recipes.firstWhere(
+                      (r) => r.id == recipeId,
+                  orElse: () => Recipe(id: "", name: "?", ingredients: [], userId: menu.userId),
+                );
                 final numChildren = menu.estimatedChildrenPerDay[day] ?? 0;
 
                 return pw.Column(
@@ -188,18 +259,20 @@ class WeeklyOrderPage extends StatelessWidget {
             }).toList(),
 
             pw.SizedBox(height: 20),
-            pw.Text("Totales consolidados",
+            pw.Text("Totales consolidados (con inventario)",
                 style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 10),
 
             pw.TableHelper.fromTextArray(
-              headers: ["Ingrediente", "Total base", "Unidad", "Total compra", "Unidad compra"],
+              headers: ["Ingrediente", "Total base", "Unidad", "Compra", "Inventario", "Pedido", "Unidad compra"],
               data: totals.map((item) {
                 return [
                   item['name'],
-                  item['base'].toStringAsFixed(2),
+                  (item['base'] as double).toStringAsFixed(2),
                   item['unit'],
-                  item['compra'].toStringAsFixed(2),
+                  (item['compra'] as double).toStringAsFixed(2),
+                  (item['inventario'] as double).toStringAsFixed(2),
+                  (item['pedido'] as double).toStringAsFixed(2),
                   item['purchaseUnit'],
                 ];
               }).toList(),

@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_service.dart';
-import 'ingredients/ingredient_base_list_page.dart'; // ✅ Importamos la lista de ingredientes base
+import 'ingredients/ingredient_base_list_page.dart';
 import 'recipes/recipe_list_page.dart';
 import 'premium_info_page.dart';
 import 'menus/menu_list_page.dart';
-import 'settings_page.dart'; // ✅ Importamos la nueva pantalla de ajustes
+import 'settings_page.dart';
+import 'inventory/inventory_page.dart'; // ✅ Importamos la nueva pantalla
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -29,7 +30,6 @@ class HomeScreen extends StatelessWidget {
           style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
         ),
         actions: [
-          // ✅ Botón de Ajustes
           IconButton(
             icon: const Icon(Icons.settings, size: 28),
             onPressed: () {
@@ -63,15 +63,12 @@ class HomeScreen extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // 🔹 Logo en grande
                   Image.asset(
                     "assets/icon/lolaicon.png",
                     width: 160,
                     height: 160,
                   ),
                   const SizedBox(height: 15),
-
-                  // 🔹 Nombre de la app
                   const Text(
                     "WillCooks",
                     style: TextStyle(
@@ -81,10 +78,7 @@ class HomeScreen extends StatelessWidget {
                       letterSpacing: 1.5,
                     ),
                   ),
-
                   const SizedBox(height: 30),
-
-                  // 🔹 Bienvenida al usuario
                   Text(
                     "Bienvenido, ${FirebaseAuth.instance.currentUser!.displayName ?? "Usuario"}",
                     style: const TextStyle(
@@ -93,10 +87,8 @@ class HomeScreen extends StatelessWidget {
                     ),
                     textAlign: TextAlign.center,
                   ),
-
                   const SizedBox(height: 40),
 
-                  // 🔹 Botones principales
                   _buildMenuButton(
                     context,
                     label: "Ver recetas",
@@ -126,7 +118,10 @@ class HomeScreen extends StatelessWidget {
                     label: "Inventario",
                     icon: Icons.inventory,
                     onPressed: () {
-                      // TODO: ir a pantalla de Inventario
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => InventoryPage()), // ✅
+                      );
                     },
                   ),
                   const SizedBox(height: 20),
@@ -150,7 +145,6 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  /// 🔹 Método helper para botones con icono
   Widget _buildMenuButton(BuildContext context,
       {required String label,
         required IconData icon,
