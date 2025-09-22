@@ -3,7 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
-
 import '../../services/menu_service.dart';
 import '../../services/recipe_service.dart';
 import '../../services/inventory_service.dart';
@@ -31,8 +30,18 @@ class WeeklyOrderPage extends StatelessWidget {
             icon: const Icon(Icons.picture_as_pdf),
             tooltip: "Exportar a PDF",
             onPressed: () async {
-              final pdf = await _generatePdf(userId);
-              await Printing.layoutPdf(onLayout: (format) async => pdf.save());
+              try {
+                final pdf = await _generatePdf(userId);
+                final bytes = await pdf.save();
+                print("📄 PDF generado con ${bytes.length} bytes");
+                await Printing.layoutPdf(onLayout: (format) async => bytes);
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("Error al generar PDF: $e")),
+                  );
+                }
+              }
             },
           ),
         ],
@@ -54,7 +63,6 @@ class WeeklyOrderPage extends StatelessWidget {
               if (!recipeSnapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
-
               final allRecipes = recipeSnapshot.data!;
 
               return StreamBuilder<List<InventoryItem>>(
@@ -63,7 +71,6 @@ class WeeklyOrderPage extends StatelessWidget {
                   if (!invSnapshot.hasData) {
                     return const Center(child: CircularProgressIndicator());
                   }
-
                   final inventory = invSnapshot.data!;
                   final totals = _calculateTotals(menu, allRecipes, inventory);
 
@@ -83,9 +90,16 @@ class WeeklyOrderPage extends StatelessWidget {
                               child: ListTile(
                                 leading: const Icon(Icons.shopping_cart),
                                 title: Text(item['name'], style: const TextStyle(fontSize: 18)),
-                                subtitle: Text(
-                                  "Necesario: ${item['compra'].toStringAsFixed(2)} ${item['purchaseUnit']} "
-                                      "(Inventario: ${item['inventario'].toStringAsFixed(2)} → Pedido: ${item['pedido'].toStringAsFixed(2)})",
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text("Necesario: ${(item['compra'] as num).toDouble().toStringAsFixed(2)} ${item['purchaseUnit']}",
+                                        style: const TextStyle(fontSize: 14)),
+                                    Text("Inventario: ${(item['inventario'] as num).toDouble().toStringAsFixed(2)}",
+                                        style: const TextStyle(fontSize: 14)),
+                                    Text("Pedido: ${(item['pedido'] as num).toDouble().toStringAsFixed(2)} ${item['purchaseUnit']}",
+                                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                                  ],
                                 ),
                               ),
                             );
@@ -95,20 +109,43 @@ class WeeklyOrderPage extends StatelessWidget {
                       const SizedBox(height: 10),
                       ElevatedButton.icon(
                         onPressed: () async {
-                          // lo consumido del inventario = compra - pedido
-                          final Map<String, double> consumido = {
-                            for (final item in totals)
-                              if ((item['compra'] as double) > 0)
-                                (item['ingredientId'] as String):
-                                ((item['compra'] as double) - (item['pedido'] as double))
-                          };
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text("Confirmar pedido"),
+                              content: const Text(
+                                "¿Seguro que quieres realizar el pedido?\n\n"
+                                    "Se eliminarán del inventario los ingredientes utilizados "
+                                    "para este menú semanal.",
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context, false),
+                                  child: const Text("Cancelar"),
+                                ),
+                                ElevatedButton(
+                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                                  onPressed: () => Navigator.pop(context, true),
+                                  child: const Text("Confirmar"),
+                                ),
+                              ],
+                            ),
+                          );
 
-                          await _inventoryService.resetQuantities(userId, consumido);
+                          if (confirmed == true) {
+                            final Map<String, double> consumido = {
+                              for (final item in totals)
+                                if ((item['compra'] as num).toDouble() > 0)
+                                  (item['ingredientId'] as String): (item['compra'] as num).toDouble()
+                            };
 
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text("Pedido realizado ✅")),
-                            );
+                            await _inventoryService.resetQuantities(userId, consumido);
+
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text("Pedido realizado ✅")),
+                              );
+                            }
                           }
                         },
                         icon: const Icon(Icons.check),
@@ -130,13 +167,14 @@ class WeeklyOrderPage extends StatelessWidget {
     );
   }
 
+  /// 🔹 Normalizar nombres
   String _normalizeName(String name) {
     var n = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9 ]'), '').trim();
     if (n.endsWith('s')) n = n.substring(0, n.length - 1);
     return n;
   }
 
-  /// Totales consolidados con inventario
+  /// 🔹 Calcular totales con inventario
   List<Map<String, dynamic>> _calculateTotals(
       Menu menu,
       List<Recipe> allRecipes,
@@ -180,7 +218,7 @@ class WeeklyOrderPage extends StatelessWidget {
               'purchaseUnit': ing.purchaseUnit,
               'base': totalBase,
               'compra': totalCompra,
-              'inventario': inv.quantity,
+              'inventario': (inv.quantity as num).toDouble(),
               'pedido': 0.0,
             };
           }
@@ -188,10 +226,10 @@ class WeeklyOrderPage extends StatelessWidget {
       }
     });
 
-    // aplica inventario
+    // calcular pedido = compra - inventario
     for (final item in totals.values) {
-      final inventario = item['inventario'] as double;
-      final compra = item['compra'] as double;
+      final inventario = (item['inventario'] as num).toDouble();
+      final compra = (item['compra'] as num).toDouble();
       item['pedido'] = (compra - inventario).clamp(0, double.infinity);
     }
 
@@ -206,15 +244,32 @@ class WeeklyOrderPage extends StatelessWidget {
     }).toList();
   }
 
-  /// PDF con ingredientes por receta y día + totales consolidados con inventario
+  /// 🔹 Generar PDF con inventario
   Future<pw.Document> _generatePdf(String userId) async {
-    final menu = await _menuService.getMenuForWeek(userId, weekStart).first;
     final pdf = pw.Document();
-    if (menu == null) return pdf;
+    final menu = await _menuService.getMenuForWeek(userId, weekStart).first;
+
+    if (menu == null) {
+      pdf.addPage(
+        pw.Page(
+          build: (context) => pw.Center(child: pw.Text("No hay menú esta semana")),
+        ),
+      );
+      return pdf;
+    }
 
     final recipes = await _recipeService.getRecipesByUser(userId).first;
     final inventory = await _inventoryService.getInventory(userId).first;
     final totals = _calculateTotals(menu, recipes, inventory);
+
+    if (totals.isEmpty) {
+      pdf.addPage(
+        pw.Page(
+          build: (context) => pw.Center(child: pw.Text("No hay ingredientes para este pedido")),
+        ),
+      );
+      return pdf;
+    }
 
     pdf.addPage(
       pw.MultiPage(
@@ -264,15 +319,15 @@ class WeeklyOrderPage extends StatelessWidget {
             pw.SizedBox(height: 10),
 
             pw.TableHelper.fromTextArray(
-              headers: ["Ingrediente", "Total base", "Unidad", "Compra", "Inventario", "Pedido", "Unidad compra"],
+              headers: ["Ingrediente", "Base", "Unidad", "Compra", "Inventario", "Pedido", "Unidad compra"],
               data: totals.map((item) {
                 return [
                   item['name'],
-                  (item['base'] as double).toStringAsFixed(2),
+                  (item['base'] as num).toDouble().toStringAsFixed(2),
                   item['unit'],
-                  (item['compra'] as double).toStringAsFixed(2),
-                  (item['inventario'] as double).toStringAsFixed(2),
-                  (item['pedido'] as double).toStringAsFixed(2),
+                  (item['compra'] as num).toDouble().toStringAsFixed(2),
+                  (item['inventario'] as num).toDouble().toStringAsFixed(2),
+                  (item['pedido'] as num).toDouble().toStringAsFixed(2),
                   item['purchaseUnit'],
                 ];
               }).toList(),

@@ -15,18 +15,19 @@ class InventoryService {
 
   /// 🔹 Crear o actualizar item (docId = ingredientId)
   Future<void> addOrUpdateItem(InventoryItem item) async {
-    await _collection.doc(item.ingredientId).set(item.toMap());
+    await _collection.doc(item.ingredientId).set(item.toMap(), SetOptions(merge: true));
   }
 
   /// 🔹 Actualizar cantidad directa
   Future<void> updateQuantity(String ingredientId, double quantity) async {
+    final newQty = quantity.clamp(0, double.infinity);
     await _collection.doc(ingredientId).update({
-      'quantity': quantity,
+      'quantity': newQty,
       'lastUpdated': DateTime.now().toIso8601String(),
     });
   }
 
-  /// 🔹 Establecer cantidad
+  /// 🔹 Establecer cantidad (crear o sobrescribir)
   Future<void> setQuantity({
     required String userId,
     required String ingredientId,
@@ -38,31 +39,36 @@ class InventoryService {
       'id': ingredientId,
       'ingredientId': ingredientId,
       'name': name,
-      'quantity': quantity,
+      'quantity': quantity.clamp(0, double.infinity),
       'unit': unit,
       'lastUpdated': DateTime.now().toIso8601String(),
       'userId': userId,
     });
   }
 
-
-  /// 🔹 Restar cantidades consumidas (clamp a 0)
+  /// 🔹 Restar cantidades consumidas (en purchaseUnit) y hacer clamp a 0
   Future<void> resetQuantities(
       String userId, Map<String, double> consumed) async {
     final batch = FirebaseFirestore.instance.batch();
 
     for (final entry in consumed.entries) {
-      final docRef = _collection.doc(entry.key); // usamos ingredientId
+      final docRef = _collection.doc(entry.key); // ingredientId
       final doc = await docRef.get();
 
       if (doc.exists) {
         final current = (doc['quantity'] as num).toDouble();
-        final newQty = (current - entry.value).clamp(0, double.infinity);
+        final consumedQty = entry.value;
+        final newQty = (current - consumedQty).clamp(0, double.infinity);
+
+        print(
+            "🔹 Restando ${consumedQty.toStringAsFixed(2)} a ${doc['name']} (antes: $current, después: $newQty)");
 
         batch.update(docRef, {
           'quantity': newQty,
           'lastUpdated': DateTime.now().toIso8601String(),
         });
+      } else {
+        print("⚠️ No existe inventario para ${entry.key}, no se descuenta.");
       }
     }
 
