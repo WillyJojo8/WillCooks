@@ -56,7 +56,45 @@ class RecipeListPage extends StatelessWidget {
                             final r = filtered[i];
                             return ListTile(
                               title: Text(r.name),
-                              subtitle: Text("${r.ingredients.length} ingredientes"),
+                              subtitle:
+                              Text("${r.ingredients.length} ingredientes"),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.delete, color: Colors.red),
+                                onPressed: () async {
+                                  final confirmed = await showDialog<bool>(
+                                    context: context,
+                                    builder: (context) => AlertDialog(
+                                      title: const Text("Eliminar receta"),
+                                      content: Text(
+                                          "¿Seguro que quieres eliminar '${r.name}'?"),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(context, false),
+                                          child: const Text("Cancelar"),
+                                        ),
+                                        ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                              backgroundColor: Colors.red),
+                                          onPressed: () =>
+                                              Navigator.pop(context, true),
+                                          child: const Text("Eliminar"),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  if (confirmed == true) {
+                                    await _recipeService.deleteRecipe(r.id);
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                            content: Text(
+                                                "Receta '${r.name}' eliminada")),
+                                      );
+                                    }
+                                  }
+                                },
+                              ),
                               onTap: () {
                                 if (returnOnSelect) {
                                   Navigator.pop(context);
@@ -66,7 +104,8 @@ class RecipeListPage extends StatelessWidget {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (_) => RecipeDetailPage(recipe: r),
+                                      builder: (_) =>
+                                          RecipeDetailPage(recipe: r),
                                     ),
                                   );
                                 }
@@ -132,6 +171,43 @@ class RecipeListPage extends StatelessWidget {
                       style: const TextStyle(fontSize: 20)),
                   subtitle:
                   Text("${recipe.ingredients.length} ingredientes"),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete, color: Colors.red),
+                    onPressed: () async {
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text("Eliminar receta"),
+                          content: Text(
+                              "¿Seguro que quieres eliminar '${recipe.name}'?"),
+                          actions: [
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.pop(context, false),
+                              child: const Text("Cancelar"),
+                            ),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red),
+                              onPressed: () =>
+                                  Navigator.pop(context, true),
+                              child: const Text("Eliminar"),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirmed == true) {
+                        await _recipeService.deleteRecipe(recipe.id);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                                content: Text(
+                                    "Receta '${recipe.name}' eliminada")),
+                          );
+                        }
+                      }
+                    },
+                  ),
                   onTap: () {
                     if (returnOnSelect) {
                       Navigator.pop(context, recipe);

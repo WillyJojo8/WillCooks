@@ -38,7 +38,7 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
     await _recipeService.addRecipe(updatedRecipe);
   }
 
-  /// 🔹 Diálogo añadir/editar ingrediente con opción de editar valores
+  /// 🔹 Diálogo añadir/editar ingrediente
   void _ingredientDialog({int? index, Ingredient? ing}) async {
     final bases = await _ingredientBaseService.getAll().first;
 
@@ -74,7 +74,7 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     DropdownButtonFormField<IngredientBase>(
-                      value: selectedBase,
+                      initialValue : selectedBase,
                       items: bases
                           .map((b) =>
                           DropdownMenuItem(value: b, child: Text(b.name)))
@@ -85,14 +85,13 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
                           if (val != null) {
                             unitCtrl.text = val.defaultUnit;
                             purchaseUnitCtrl.text = val.purchaseUnit;
-                            factorCtrl.text =
-                                val.conversionFactor.toString();
+                            factorCtrl.text = val.conversionFactor.toString();
                             densityCtrl.text = val.density?.toString() ?? "";
                           }
                         });
                       },
-                      decoration: const InputDecoration(
-                          labelText: "Ingrediente base"),
+                      decoration:
+                      const InputDecoration(labelText: "Ingrediente base"),
                     ),
                     TextField(
                       controller: amountCtrl,
@@ -193,6 +192,42 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
     await _saveRecipe();
   }
 
+  /// 🔹 Diálogo para renombrar receta
+  Future<void> _renameRecipe() async {
+    final controller = TextEditingController(text: _recipeName);
+
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Renombrar receta"),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: "Nuevo nombre"),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancelar"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text("Guardar"),
+          ),
+        ],
+      ),
+    );
+
+    if (newName != null && newName.trim().isNotEmpty) {
+      setState(() => _recipeName = newName.trim());
+      await _saveRecipe();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Receta renombrada a '$newName' ✅")),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -201,6 +236,13 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
           _recipeName,
           style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit),
+            tooltip: "Renombrar",
+            onPressed: _renameRecipe,
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),

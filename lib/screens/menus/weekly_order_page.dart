@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
+import 'package:intl/intl.dart';
+
 import '../../services/menu_service.dart';
 import '../../services/recipe_service.dart';
 import '../../services/inventory_service.dart';
@@ -21,6 +23,8 @@ class WeeklyOrderPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final userId = FirebaseAuth.instance.currentUser!.uid;
+    final weekEnd = weekStart.add(const Duration(days: 6));
+    final dateFormat = DateFormat('dd/MM/yyyy', 'es_ES');
 
     return Scaffold(
       appBar: AppBar(
@@ -33,8 +37,13 @@ class WeeklyOrderPage extends StatelessWidget {
               try {
                 final pdf = await _generatePdf(userId);
                 final bytes = await pdf.save();
-                print("📄 PDF generado con ${bytes.length} bytes");
-                await Printing.layoutPdf(onLayout: (format) async => bytes);
+                final startStr = dateFormat.format(weekStart).replaceAll('/', '-');
+                final endStr = dateFormat.format(weekEnd).replaceAll('/', '-');
+
+                await Printing.layoutPdf(
+                  onLayout: (format) async => bytes,
+                  name: "Pedido_${startStr}_a_${endStr}",
+                );
               } catch (e) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -93,12 +102,18 @@ class WeeklyOrderPage extends StatelessWidget {
                                 subtitle: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text("Necesario: ${(item['compra'] as num).toDouble().toStringAsFixed(2)} ${item['purchaseUnit']}",
-                                        style: const TextStyle(fontSize: 14)),
-                                    Text("Inventario: ${(item['inventario'] as num).toDouble().toStringAsFixed(2)}",
-                                        style: const TextStyle(fontSize: 14)),
-                                    Text("Pedido: ${(item['pedido'] as num).toDouble().toStringAsFixed(2)} ${item['purchaseUnit']}",
-                                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                                    Text(
+                                      "Necesario: ${(item['compra'] as num).toDouble().toStringAsFixed(2)} ${item['purchaseUnit']}",
+                                      style: const TextStyle(fontSize: 14),
+                                    ),
+                                    Text(
+                                      "Inventario: ${(item['inventario'] as num).toDouble().toStringAsFixed(2)} ${item['purchaseUnit']}",
+                                      style: const TextStyle(fontSize: 14),
+                                    ),
+                                    Text(
+                                      "PEDIR: ${(item['pedido'] as num).toDouble().toStringAsFixed(2)} ${item['purchaseUnit']}",
+                                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -167,14 +182,16 @@ class WeeklyOrderPage extends StatelessWidget {
     );
   }
 
-  /// 🔹 Normalizar nombres
+  // ---- Helpers ----
+
+  String _capitalize(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+
   String _normalizeName(String name) {
     var n = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9 ]'), '').trim();
     if (n.endsWith('s')) n = n.substring(0, n.length - 1);
     return n;
   }
 
-  /// 🔹 Calcular totales con inventario
   List<Map<String, dynamic>> _calculateTotals(
       Menu menu,
       List<Recipe> allRecipes,
@@ -226,7 +243,7 @@ class WeeklyOrderPage extends StatelessWidget {
       }
     });
 
-    // calcular pedido = compra - inventario
+    // pedido = compra - inventario
     for (final item in totals.values) {
       final inventario = (item['inventario'] as num).toDouble();
       final compra = (item['compra'] as num).toDouble();
@@ -244,29 +261,30 @@ class WeeklyOrderPage extends StatelessWidget {
     }).toList();
   }
 
-  /// 🔹 Generar PDF con inventario
+  // ---- PDF ----
+
   Future<pw.Document> _generatePdf(String userId) async {
     final pdf = pw.Document();
+    final dateFormatRange = DateFormat('dd/MM/yyyy', 'es_ES');
+    final dateFormatDay = DateFormat("EEEE d 'de' MMMM", 'es_ES');
+
+    final weekEnd = weekStart.add(const Duration(days: 6));
     final menu = await _menuService.getMenuForWeek(userId, weekStart).first;
 
     if (menu == null) {
       pdf.addPage(
-        pw.Page(
-          build: (context) => pw.Center(child: pw.Text("No hay menú esta semana")),
-        ),
+        pw.Page(build: (context) => pw.Center(child: pw.Text("No hay menú esta semana"))),
       );
       return pdf;
     }
 
     final recipes = await _recipeService.getRecipesByUser(userId).first;
-    final inventory = await _inventoryService.getInventory(userId).first;
+    final inventory = await _inventoryService.getInventory(userId).first; // keep loaded (aunque no se usa aquí)
     final totals = _calculateTotals(menu, recipes, inventory);
 
     if (totals.isEmpty) {
       pdf.addPage(
-        pw.Page(
-          build: (context) => pw.Center(child: pw.Text("No hay ingredientes para este pedido")),
-        ),
+        pw.Page(build: (context) => pw.Center(child: pw.Text("No hay ingredientes para este pedido"))),
       );
       return pdf;
     }
@@ -275,43 +293,59 @@ class WeeklyOrderPage extends StatelessWidget {
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         build: (context) {
-          return [
-            pw.Text(
-              "Pedido semanal - ${weekStart.toLocal().toString().split(' ')[0]}",
-              style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
-            ),
-            pw.SizedBox(height: 20),
+          // ---- Días en orden cronológico entre feInicio y feFin ----
+          final totalDays = menu.feFin.difference(menu.feInicio).inDays + 1;
 
-            // Ingredientes por receta y día
-            ...menu.dailyRecipes.entries.expand((entry) {
-              final day = entry.key;
-              final recipeIds = entry.value;
-              return recipeIds.map((recipeId) {
+          final dayWidgets = <pw.Widget>[];
+          for (int i = 0; i < totalDays; i++) {
+            final currentDate = menu.feInicio.add(Duration(days: i));
+            final dayNameRaw = DateFormat('EEEE', 'es_ES').format(currentDate);
+            final dayName = _capitalize(dayNameRaw);
+            final dateStr = _capitalize(dateFormatDay.format(currentDate));
+
+            final recipeIds = menu.dailyRecipes[dayName] ?? [];
+            if (recipeIds.isEmpty) continue;
+
+            dayWidgets.addAll([
+              pw.Text(
+                "$dayName ($dateStr)",
+                style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+              ),
+              pw.SizedBox(height: 4),
+              ...recipeIds.map((recipeId) {
                 final recipe = recipes.firstWhere(
                       (r) => r.id == recipeId,
                   orElse: () => Recipe(id: "", name: "?", ingredients: [], userId: menu.userId),
                 );
-                final numChildren = menu.estimatedChildrenPerDay[day] ?? 0;
+                final numChildren = menu.estimatedChildrenPerDay[dayName] ?? 0;
 
                 return pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text(
-                      "${recipe.name} ($day)",
-                      style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
-                    ),
-                    pw.SizedBox(height: 4),
+                    pw.Text("- ${recipe.name}", style: const pw.TextStyle(fontSize: 14)),
                     ...recipe.ingredients.map((ing) => pw.Text(
-                      "- ${ing.name}: "
+                      "   • ${ing.name}: "
                           "${ing.totalForChildren(numChildren).toStringAsFixed(2)} ${ing.unit} "
                           "(${ing.totalForChildrenInPurchaseUnit(numChildren).toStringAsFixed(2)} ${ing.purchaseUnit})",
                       style: const pw.TextStyle(fontSize: 12),
                     )),
-                    pw.SizedBox(height: 10),
+                    pw.SizedBox(height: 8),
                   ],
                 );
-              });
-            }).toList(),
+              }),
+              pw.SizedBox(height: 10),
+            ]);
+          }
+
+          return [
+            pw.Text(
+              "Pedido semanal - ${dateFormatRange.format(weekStart)} a ${dateFormatRange.format(weekEnd)}",
+              style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 20),
+
+            // Bloques por día en orden
+            ...dayWidgets,
 
             pw.SizedBox(height: 20),
             pw.Text("Totales consolidados (con inventario)",
@@ -319,16 +353,14 @@ class WeeklyOrderPage extends StatelessWidget {
             pw.SizedBox(height: 10),
 
             pw.TableHelper.fromTextArray(
-              headers: ["Ingrediente", "Base", "Unidad", "Compra", "Inventario", "Pedido", "Unidad compra"],
+              headers: ["Ingrediente", "Peso", "Necesario", "Inventario", "PEDIR"],
               data: totals.map((item) {
                 return [
                   item['name'],
-                  (item['base'] as num).toDouble().toStringAsFixed(2),
-                  item['unit'],
-                  (item['compra'] as num).toDouble().toStringAsFixed(2),
-                  (item['inventario'] as num).toDouble().toStringAsFixed(2),
-                  (item['pedido'] as num).toDouble().toStringAsFixed(2),
-                  item['purchaseUnit'],
+                  "${(item['base'] as num).toDouble().toStringAsFixed(2)} ${item['unit']}",
+                  "${(item['compra'] as num).toDouble().toStringAsFixed(2)} ${item['purchaseUnit']}",
+                  "${(item['inventario'] as num).toDouble().toStringAsFixed(2)} ${item['purchaseUnit']}",
+                  "${(item['pedido'] as num).toDouble().toStringAsFixed(2)} ${item['purchaseUnit']}",
                 ];
               }).toList(),
             ),
