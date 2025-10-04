@@ -87,91 +87,35 @@ class WeeklyOrderPage extends StatelessWidget {
                     return const Center(child: Text("No hay ingredientes esta semana"));
                   }
 
-                  return Column(
-                    children: [
-                      Expanded(
-                        child: ListView.builder(
-                          itemCount: totals.length,
-                          itemBuilder: (context, index) {
-                            final item = totals[index];
-                            return Card(
-                              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                              child: ListTile(
-                                leading: const Icon(Icons.shopping_cart),
-                                title: Text(item['name'], style: const TextStyle(fontSize: 18)),
-                                subtitle: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      "Necesario: ${(item['compra'] as num).toDouble().toStringAsFixed(2)} ${item['purchaseUnit']}",
-                                      style: const TextStyle(fontSize: 14),
-                                    ),
-                                    Text(
-                                      "Inventario: ${(item['inventario'] as num).toDouble().toStringAsFixed(2)} ${item['purchaseUnit']}",
-                                      style: const TextStyle(fontSize: 14),
-                                    ),
-                                    Text(
-                                      "PEDIR: ${(item['pedido'] as num).toDouble().toStringAsFixed(2)} ${item['purchaseUnit']}",
-                                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                                    ),
-                                  ],
+                  return ListView.builder(
+                    itemCount: totals.length,
+                    itemBuilder: (context, index) {
+                      final item = totals[index];
+                      return Card(
+                        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        child: ListTile(
+                          leading: const Icon(Icons.shopping_cart),
+                          title: Text(item['name'], style: const TextStyle(fontSize: 18)),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Necesario: ${(item['compra'] as num).toDouble().toStringAsFixed(2)} ${item['purchaseUnit']}",
+                              ),
+                              Text(
+                                "Inventario: ${(item['inventario'] as num).toDouble().toStringAsFixed(2)} ${item['purchaseUnit']}",
+                              ),
+                              Text(
+                                "PEDIR: ${(item['pedido'] as num).toDouble().toStringAsFixed(2)} ${item['purchaseUnit']}",
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
-                            );
-                          },
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      ElevatedButton.icon(
-                        onPressed: () async {
-                          final confirmed = await showDialog<bool>(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              title: const Text("Confirmar pedido"),
-                              content: const Text(
-                                "¿Seguro que quieres realizar el pedido?\n\n"
-                                    "Se eliminarán del inventario los ingredientes utilizados "
-                                    "para este menú semanal.",
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context, false),
-                                  child: const Text("Cancelar"),
-                                ),
-                                ElevatedButton(
-                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                                  onPressed: () => Navigator.pop(context, true),
-                                  child: const Text("Confirmar"),
-                                ),
-                              ],
-                            ),
-                          );
-
-                          if (confirmed == true) {
-                            final Map<String, double> consumido = {
-                              for (final item in totals)
-                                if ((item['compra'] as num).toDouble() > 0)
-                                  (item['ingredientId'] as String): (item['compra'] as num).toDouble()
-                            };
-
-                            await _inventoryService.resetQuantities(userId, consumido);
-
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text("Pedido realizado ✅")),
-                              );
-                            }
-                          }
-                        },
-                        icon: const Icon(Icons.check),
-                        label: const Text("Pedido realizado"),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
+                      );
+                    },
                   );
                 },
               );
@@ -184,8 +128,6 @@ class WeeklyOrderPage extends StatelessWidget {
 
   // ---- Helpers ----
 
-  String _capitalize(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
-
   String _normalizeName(String name) {
     var n = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9 ]'), '').trim();
     if (n.endsWith('s')) n = n.substring(0, n.length - 1);
@@ -193,26 +135,26 @@ class WeeklyOrderPage extends StatelessWidget {
   }
 
   List<Map<String, dynamic>> _calculateTotals(
-      Menu menu,
-      List<Recipe> allRecipes,
-      List<InventoryItem> inventory,
-      ) {
+      Menu menu, List<Recipe> allRecipes, List<InventoryItem> inventory) {
     final Map<String, Map<String, dynamic>> totals = {};
 
     menu.dailyRecipes.forEach((day, recipeIds) {
-      final numChildren = menu.estimatedChildrenPerDay[day] ?? 0;
+      final estInf = menu.estimatedChildrenInfantilPerDay[day] ?? 0;
+      final estPrim = menu.estimatedChildrenPrimariaPerDay[day] ?? 0;
+
       for (final recipeId in recipeIds) {
         final recipe = allRecipes.firstWhere(
               (r) => r.id == recipeId,
           orElse: () => Recipe(id: "", name: "?", ingredients: [], userId: menu.userId),
         );
+
         for (final ing in recipe.ingredients) {
           final key = "${_normalizeName(ing.name)}-${ing.unit}-${ing.purchaseUnit}";
-          final totalBase = ing.totalForChildren(numChildren);
-          final totalCompra = ing.totalForChildrenInPurchaseUnit(numChildren);
+          final totalInf = ing.totalInfantilInPurchaseUnit(estInf);
+          final totalPrim = ing.totalPrimariaInPurchaseUnit(estPrim);
+          final totalCompra = totalInf + totalPrim;
 
           if (totals.containsKey(key)) {
-            totals[key]!['base'] += totalBase;
             totals[key]!['compra'] += totalCompra;
           } else {
             final inv = inventory.firstWhere(
@@ -231,9 +173,7 @@ class WeeklyOrderPage extends StatelessWidget {
             totals[key] = {
               'ingredientId': ing.ingredientId,
               'name': _normalizeName(ing.name),
-              'unit': ing.unit,
               'purchaseUnit': ing.purchaseUnit,
-              'base': totalBase,
               'compra': totalCompra,
               'inventario': (inv.quantity as num).toDouble(),
               'pedido': 0.0,
@@ -243,22 +183,15 @@ class WeeklyOrderPage extends StatelessWidget {
       }
     });
 
-    // pedido = compra - inventario
     for (final item in totals.values) {
-      final inventario = (item['inventario'] as num).toDouble();
+      final inv = (item['inventario'] as num).toDouble();
       final compra = (item['compra'] as num).toDouble();
-      item['pedido'] = (compra - inventario).clamp(0, double.infinity);
+      item['pedido'] = (compra - inv).clamp(0, double.infinity);
     }
 
     final list = totals.values.toList();
     list.sort((a, b) => (a['name'] as String).compareTo(b['name'] as String));
-    return list.map((item) {
-      final name = item['name'] as String;
-      return {
-        ...item,
-        'name': name.isEmpty ? name : name[0].toUpperCase() + name.substring(1),
-      };
-    }).toList();
+    return list;
   }
 
   // ---- PDF ----
@@ -267,102 +200,145 @@ class WeeklyOrderPage extends StatelessWidget {
     final pdf = pw.Document();
     final dateFormatRange = DateFormat('dd/MM/yyyy', 'es_ES');
     final dateFormatDay = DateFormat("EEEE d 'de' MMMM", 'es_ES');
-
     final weekEnd = weekStart.add(const Duration(days: 6));
-    final menu = await _menuService.getMenuForWeek(userId, weekStart).first;
 
+    final menu = await _menuService.getMenuForWeek(userId, weekStart).first;
     if (menu == null) {
-      pdf.addPage(
-        pw.Page(build: (context) => pw.Center(child: pw.Text("No hay menú esta semana"))),
-      );
+      pdf.addPage(pw.Page(build: (_) => pw.Center(child: pw.Text("No hay menú esta semana"))));
       return pdf;
     }
 
     final recipes = await _recipeService.getRecipesByUser(userId).first;
-    final inventory = await _inventoryService.getInventory(userId).first; // keep loaded (aunque no se usa aquí)
+    final inventory = await _inventoryService.getInventory(userId).first;
     final totals = _calculateTotals(menu, recipes, inventory);
-
-    if (totals.isEmpty) {
-      pdf.addPage(
-        pw.Page(build: (context) => pw.Center(child: pw.Text("No hay ingredientes para este pedido"))),
-      );
-      return pdf;
-    }
 
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(24),
         build: (context) {
-          // ---- Días en orden cronológico entre feInicio y feFin ----
           final totalDays = menu.feFin.difference(menu.feInicio).inDays + 1;
+          final List<pw.Widget> dayWidgets = [];
 
-          final dayWidgets = <pw.Widget>[];
           for (int i = 0; i < totalDays; i++) {
             final currentDate = menu.feInicio.add(Duration(days: i));
-            final dayNameRaw = DateFormat('EEEE', 'es_ES').format(currentDate);
-            final dayName = _capitalize(dayNameRaw);
-            final dateStr = _capitalize(dateFormatDay.format(currentDate));
-
+            final dayName = DateFormat('EEEE', 'es_ES').format(currentDate).capitalize();
             final recipeIds = menu.dailyRecipes[dayName] ?? [];
             if (recipeIds.isEmpty) continue;
 
-            dayWidgets.addAll([
-              pw.Text(
-                "$dayName ($dateStr)",
-                style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
-              ),
-              pw.SizedBox(height: 4),
-              ...recipeIds.map((recipeId) {
-                final recipe = recipes.firstWhere(
-                      (r) => r.id == recipeId,
-                  orElse: () => Recipe(id: "", name: "?", ingredients: [], userId: menu.userId),
-                );
-                final numChildren = menu.estimatedChildrenPerDay[dayName] ?? 0;
+            final estInf = menu.estimatedChildrenInfantilPerDay[dayName] ?? 0;
+            final estPrim = menu.estimatedChildrenPrimariaPerDay[dayName] ?? 0;
 
-                return pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text("- ${recipe.name}", style: const pw.TextStyle(fontSize: 14)),
-                    ...recipe.ingredients.map((ing) => pw.Text(
-                      "   • ${ing.name}: "
-                          "${ing.totalForChildren(numChildren).toStringAsFixed(2)} ${ing.unit} "
-                          "(${ing.totalForChildrenInPurchaseUnit(numChildren).toStringAsFixed(2)} ${ing.purchaseUnit})",
-                      style: const pw.TextStyle(fontSize: 12),
-                    )),
-                    pw.SizedBox(height: 8),
-                  ],
+            dayWidgets.add(
+              pw.Container(
+                padding: const pw.EdgeInsets.symmetric(vertical: 6),
+                child: pw.Text(
+                  "$dayName (${dateFormatDay.format(currentDate)})",
+                  style: pw.TextStyle(
+                    fontSize: 18,
+                    fontWeight: pw.FontWeight.bold,
+                    color: PdfColors.deepOrange800,
+                  ),
+                ),
+              ),
+            );
+
+            for (final recipeId in recipeIds) {
+              final recipe = recipes.firstWhere(
+                    (r) => r.id == recipeId,
+                orElse: () => Recipe(id: "", name: "?", ingredients: [], userId: menu.userId),
+              );
+
+              double totalCrudoInf = 0;
+              double totalCocinadoInf = 0;
+              double totalCrudoPrim = 0;
+              double totalCocinadoPrim = 0;
+
+              final ingredientWidgets = recipe.ingredients.map((ing) {
+                final infCrudo = ing.amountPerChildInfantil;
+                final infCocinado = ing.amountPerChildInfantil * ing.cookingFactor;
+                final primCrudo = ing.amountPerChildPrimaria;
+                final primCocinado = ing.amountPerChildPrimaria * ing.cookingFactor;
+
+                totalCrudoInf += infCrudo;
+                totalCocinadoInf += infCocinado;
+                totalCrudoPrim += primCrudo;
+                totalCocinadoPrim += primCocinado;
+
+                return pw.Container(
+                  margin: const pw.EdgeInsets.only(left: 12, bottom: 4),
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text("• ${ing.name}", style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
+                      pw.Text("   Infantil → Crudo: ${infCrudo.toStringAsFixed(1)}${ing.unit} | Cocinado: ${infCocinado.toStringAsFixed(1)}${ing.unit}",
+                          style: pw.TextStyle(fontSize: 11, color: PdfColors.purple800)),
+                      pw.Text("   Primaria → Crudo: ${primCrudo.toStringAsFixed(1)}${ing.unit} | Cocinado: ${primCocinado.toStringAsFixed(1)}${ing.unit}",
+                          style: pw.TextStyle(fontSize: 11, color: PdfColors.blue800)),
+                    ],
+                  ),
                 );
-              }),
-              pw.SizedBox(height: 10),
-            ]);
+              }).toList();
+
+              dayWidgets.add(
+                pw.Container(
+                  margin: const pw.EdgeInsets.only(left: 10, bottom: 8),
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text("- ${recipe.name}", style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+                      ...ingredientWidgets,
+                      pw.SizedBox(height: 4),
+                      pw.Text("TOTAL PESO INGREDIENTES CRUDOS (por niño)",
+                          style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.red800)),
+                      pw.Text("   Infantil: ${totalCrudoInf.toStringAsFixed(1)} g"),
+                      pw.Text("   Primaria: ${totalCrudoPrim.toStringAsFixed(1)} g"),
+                      pw.SizedBox(height: 4),
+                      pw.Text("GRAMAJE DE PLATO FINAL SERVIDO (por niño)",
+                          style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.green800)),
+                      pw.Text("   Infantil: ${totalCocinadoInf.toStringAsFixed(1)} g"),
+                      pw.Text("   Primaria: ${totalCocinadoPrim.toStringAsFixed(1)} g"),
+                      pw.SizedBox(height: 10),
+                    ],
+                  ),
+                ),
+              );
+            }
           }
 
           return [
-            pw.Text(
-              "Pedido semanal - ${dateFormatRange.format(weekStart)} a ${dateFormatRange.format(weekEnd)}",
-              style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
+            pw.Center(
+              child: pw.Text(
+                "PEDIDO SEMANAL",
+                style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: PdfColors.blue800),
+              ),
+            ),
+            pw.Center(
+              child: pw.Text(
+                "${dateFormatRange.format(weekStart)} - ${dateFormatRange.format(weekEnd)}",
+                style: pw.TextStyle(fontSize: 14, color: PdfColors.grey700),
+              ),
             ),
             pw.SizedBox(height: 20),
-
-            // Bloques por día en orden
             ...dayWidgets,
-
             pw.SizedBox(height: 20),
             pw.Text("Totales consolidados (con inventario)",
-                style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+                style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: PdfColors.green800)),
             pw.SizedBox(height: 10),
-
             pw.TableHelper.fromTextArray(
-              headers: ["Ingrediente", "Peso", "Necesario", "Inventario", "PEDIR"],
+              headers: ["Ingrediente", "Necesario", "Inventario", "PEDIR"],
               data: totals.map((item) {
                 return [
                   item['name'],
-                  "${(item['base'] as num).toDouble().toStringAsFixed(2)} ${item['unit']}",
                   "${(item['compra'] as num).toDouble().toStringAsFixed(2)} ${item['purchaseUnit']}",
                   "${(item['inventario'] as num).toDouble().toStringAsFixed(2)} ${item['purchaseUnit']}",
                   "${(item['pedido'] as num).toDouble().toStringAsFixed(2)} ${item['purchaseUnit']}",
                 ];
               }).toList(),
+              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13, color: PdfColors.white),
+              cellStyle: const pw.TextStyle(fontSize: 11),
+              border: pw.TableBorder.all(width: 0.5, color: PdfColors.grey),
+              headerDecoration: const pw.BoxDecoration(color: PdfColors.indigo),
             ),
           ];
         },
@@ -371,4 +347,8 @@ class WeeklyOrderPage extends StatelessWidget {
 
     return pdf;
   }
+}
+
+extension _Cap on String {
+  String capitalize() => isEmpty ? this : "${this[0].toUpperCase()}${substring(1)}";
 }

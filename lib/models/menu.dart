@@ -6,9 +6,11 @@ class Menu {
   final String name;
   final DateTime feInicio;
   final DateTime feFin;
-  final Map<String, List<String>> dailyRecipes; // 🔹 solo IDs de recetas
-  final Map<String, int> estimatedChildrenPerDay;
-  final Map<String, int> actualChildrenPerDay;
+  final Map<String, List<String>> dailyRecipes; // IDs de recetas
+  final Map<String, int> estimatedChildrenInfantilPerDay;
+  final Map<String, int> estimatedChildrenPrimariaPerDay;
+  final Map<String, int> actualChildrenInfantilPerDay;
+  final Map<String, int> actualChildrenPrimariaPerDay;
   final String userId;
 
   Menu({
@@ -18,8 +20,10 @@ class Menu {
     required this.feInicio,
     required this.feFin,
     required this.dailyRecipes,
-    required this.estimatedChildrenPerDay,
-    required this.actualChildrenPerDay,
+    required this.estimatedChildrenInfantilPerDay,
+    required this.estimatedChildrenPrimariaPerDay,
+    required this.actualChildrenInfantilPerDay,
+    required this.actualChildrenPrimariaPerDay,
     required this.userId,
   });
 
@@ -30,9 +34,11 @@ class Menu {
     'userId': userId,
     'feInicio': Timestamp.fromDate(feInicio),
     'feFin': Timestamp.fromDate(feFin),
-    'dailyRecipes': dailyRecipes, // 🔹 guardamos IDs directamente
-    'estimatedChildrenPerDay': estimatedChildrenPerDay,
-    'actualChildrenPerDay': actualChildrenPerDay,
+    'dailyRecipes': dailyRecipes,
+    'estimatedChildrenInfantilPerDay': estimatedChildrenInfantilPerDay,
+    'estimatedChildrenPrimariaPerDay': estimatedChildrenPrimariaPerDay,
+    'actualChildrenInfantilPerDay': actualChildrenInfantilPerDay,
+    'actualChildrenPrimariaPerDay': actualChildrenPrimariaPerDay,
   };
 
   factory Menu.fromMap(Map<String, dynamic> map) => Menu(
@@ -42,12 +48,16 @@ class Menu {
     userId: map['userId'],
     feInicio: (map['feInicio'] as Timestamp).toDate(),
     feFin: (map['feFin'] as Timestamp).toDate(),
-    estimatedChildrenPerDay:
-    Map<String, int>.from(map['estimatedChildrenPerDay'] ?? {}),
-    actualChildrenPerDay:
-    Map<String, int>.from(map['actualChildrenPerDay'] ?? {}),
     dailyRecipes: (map['dailyRecipes'] as Map<String, dynamic>? ?? {})
         .map((day, ids) =>
         MapEntry(day, List<String>.from(ids as List<dynamic>))),
+    estimatedChildrenInfantilPerDay: Map<String, int>.from(
+        map['estimatedChildrenInfantilPerDay'] ?? {}),
+    estimatedChildrenPrimariaPerDay: Map<String, int>.from(
+        map['estimatedChildrenPrimariaPerDay'] ?? {}),
+    actualChildrenInfantilPerDay:
+    Map<String, int>.from(map['actualChildrenInfantilPerDay'] ?? {}),
+    actualChildrenPrimariaPerDay:
+    Map<String, int>.from(map['actualChildrenPrimariaPerDay'] ?? {}),
   );
 }

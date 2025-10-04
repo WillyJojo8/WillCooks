@@ -26,15 +26,18 @@ class _NewRecipePageState extends State<NewRecipePage> {
 
     IngredientBase? selectedBase;
     if (ing != null) {
-      // buscamos el base original si coincide
       selectedBase = bases.firstWhere(
             (b) => b.id == ing.ingredientId,
         orElse: () => bases.first,
       );
     }
 
-    final amountCtrl =
-    TextEditingController(text: ing?.amountPerChild.toString() ?? "");
+    final amountInfantilCtrl = TextEditingController(
+        text: ing?.amountPerChildInfantil.toString() ?? "");
+    final amountPrimariaCtrl = TextEditingController(
+        text: ing?.amountPerChildPrimaria.toString() ?? "");
+    final cookingFactorCtrl =
+    TextEditingController(text: ing?.cookingFactor.toString() ?? "1");
     final unitCtrl = TextEditingController(text: ing?.unit ?? "");
     final purchaseUnitCtrl =
     TextEditingController(text: ing?.purchaseUnit ?? "");
@@ -49,13 +52,15 @@ class _NewRecipePageState extends State<NewRecipePage> {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
             return AlertDialog(
-              title: Text(index == null ? "Nuevo ingrediente" : "Editar ingrediente"),
+              title: Text(index == null
+                  ? "Nuevo ingrediente"
+                  : "Editar ingrediente"),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     DropdownButtonFormField<IngredientBase>(
-                      value: selectedBase,
+                      initialValue: selectedBase,
                       items: bases
                           .map((b) =>
                           DropdownMenuItem(value: b, child: Text(b.name)))
@@ -75,9 +80,21 @@ class _NewRecipePageState extends State<NewRecipePage> {
                       const InputDecoration(labelText: "Ingrediente base"),
                     ),
                     TextField(
-                      controller: amountCtrl,
+                      controller: amountInfantilCtrl,
                       decoration: const InputDecoration(
-                          labelText: "Cantidad por niño"),
+                          labelText: "Cantidad por niño Infantil (crudo)"),
+                      keyboardType: TextInputType.number,
+                    ),
+                    TextField(
+                      controller: amountPrimariaCtrl,
+                      decoration: const InputDecoration(
+                          labelText: "Cantidad por niño Primaria (crudo)"),
+                      keyboardType: TextInputType.number,
+                    ),
+                    TextField(
+                      controller: cookingFactorCtrl,
+                      decoration: const InputDecoration(
+                          labelText: "Factor de cocinado (peso final/ crudo)"),
                       keyboardType: TextInputType.number,
                     ),
                     TextField(
@@ -86,16 +103,19 @@ class _NewRecipePageState extends State<NewRecipePage> {
                     ),
                     TextField(
                       controller: purchaseUnitCtrl,
-                      decoration: const InputDecoration(labelText: "Unidad de compra"),
+                      decoration:
+                      const InputDecoration(labelText: "Unidad de compra"),
                     ),
                     TextField(
                       controller: factorCtrl,
-                      decoration: const InputDecoration(labelText: "Factor de conversión"),
+                      decoration: const InputDecoration(
+                          labelText: "Factor de conversión (unidad)"),
                       keyboardType: TextInputType.number,
                     ),
                     TextField(
                       controller: densityCtrl,
-                      decoration: const InputDecoration(labelText: "Densidad (opcional)"),
+                      decoration: const InputDecoration(
+                          labelText: "Densidad (opcional)"),
                       keyboardType: TextInputType.number,
                     ),
                   ],
@@ -113,10 +133,16 @@ class _NewRecipePageState extends State<NewRecipePage> {
                     final newIngredient = Ingredient(
                       ingredientId: selectedBase!.id,
                       name: selectedBase!.name,
-                      amountPerChild: double.tryParse(amountCtrl.text) ?? 0,
+                      amountPerChildInfantil:
+                      double.tryParse(amountInfantilCtrl.text) ?? 0,
+                      amountPerChildPrimaria:
+                      double.tryParse(amountPrimariaCtrl.text) ?? 0,
+                      cookingFactor:
+                      double.tryParse(cookingFactorCtrl.text) ?? 1,
                       unit: unitCtrl.text,
                       purchaseUnit: purchaseUnitCtrl.text,
-                      conversionFactor: double.tryParse(factorCtrl.text) ?? 1,
+                      conversionFactor:
+                      double.tryParse(factorCtrl.text) ?? 1,
                       density: densityCtrl.text.isNotEmpty
                           ? double.tryParse(densityCtrl.text)
                           : null,
@@ -148,7 +174,9 @@ class _NewRecipePageState extends State<NewRecipePage> {
       _ingredients.add(Ingredient(
         ingredientId: const Uuid().v4(),
         name: "Aceite",
-        amountPerChild: 0,
+        amountPerChildInfantil: 0,
+        amountPerChildPrimaria: 0,
+        cookingFactor: 1,
         unit: "g",
         purchaseUnit: "L",
         conversionFactor: 920,
@@ -160,7 +188,8 @@ class _NewRecipePageState extends State<NewRecipePage> {
   Future<void> _saveRecipe() async {
     if (_nameController.text.isEmpty || _ingredients.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Añade un nombre y al menos un ingrediente")),
+        const SnackBar(
+            content: Text("Añade un nombre y al menos un ingrediente")),
       );
       return;
     }
@@ -198,16 +227,19 @@ class _NewRecipePageState extends State<NewRecipePage> {
                   final ing = _ingredients[index];
                   return Card(
                     child: ListTile(
-                      title: Text("${ing.name} - ${ing.amountPerChild}${ing.unit}"),
-                      subtitle: Text("Compra en ${ing.purchaseUnit}, "
-                          "Factor: ${ing.conversionFactor}"
-                          "${ing.density != null ? ", Densidad: ${ing.density}" : ""}"),
+                      title: Text(
+                          "${ing.name} - Inf: ${ing.amountPerChildInfantil}${ing.unit}, Prim: ${ing.amountPerChildPrimaria}${ing.unit}"),
+                      subtitle: Text(
+                          "Compra en ${ing.purchaseUnit}, Factor unidad: ${ing.conversionFactor}, "
+                              "Factor cocinado: ${ing.cookingFactor}"
+                              "${ing.density != null ? ", Densidad: ${ing.density}" : ""}"),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
                             icon: const Icon(Icons.edit, color: Colors.blue),
-                            onPressed: () => _ingredientDialog(index: index, ing: ing),
+                            onPressed: () =>
+                                _ingredientDialog(index: index, ing: ing),
                           ),
                           IconButton(
                             icon: const Icon(Icons.delete, color: Colors.red),

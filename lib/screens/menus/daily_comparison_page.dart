@@ -22,12 +22,14 @@ class DailyComparisonPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final estChildren = menu.estimatedChildrenPerDay[day] ?? 0;
-    final actChildren = menu.actualChildrenPerDay[day] ?? 0;
+    final estInf = menu.estimatedChildrenInfantilPerDay[day] ?? 0;
+    final estPrim = menu.estimatedChildrenPrimariaPerDay[day] ?? 0;
+    final actInf = menu.actualChildrenInfantilPerDay[day] ?? 0;
+    final actPrim = menu.actualChildrenPrimariaPerDay[day] ?? 0;
     final recipeIds = menu.dailyRecipes[day] ?? [];
 
     return Scaffold(
-      appBar: AppBar(title: Text("Comparación $day")),
+      appBar: AppBar(title: Text("Comparación total - $day")),
       body: recipeIds.isEmpty
           ? const Center(
         child: Text(
@@ -41,27 +43,45 @@ class DailyComparisonPage extends StatelessWidget {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
+
           final allRecipes = snapshot.data!;
-          final recipes = allRecipes
-              .where((r) => recipeIds.contains(r.id))
-              .toList();
+          final recipes =
+          allRecipes.where((r) => recipeIds.contains(r.id)).toList();
 
           final List<Map<String, dynamic>> comparison = [];
+
           for (final recipe in recipes) {
             for (final ing in recipe.ingredients) {
+              final estInfCrudo = ing.totalCrudoInfantil(estInf);
+              final estPrimCrudo = ing.totalCrudoPrimaria(estPrim);
+              final actInfCrudo = ing.totalCrudoInfantil(actInf);
+              final actPrimCrudo = ing.totalCrudoPrimaria(actPrim);
+
+              final estInfCocinado = estInfCrudo * ing.cookingFactor;
+              final estPrimCocinado = estPrimCrudo * ing.cookingFactor;
+              final actInfCocinado = actInfCrudo * ing.cookingFactor;
+              final actPrimCocinado = actPrimCrudo * ing.cookingFactor;
+
               comparison.add({
                 'name': ing.name,
                 'unit': ing.unit,
                 'purchaseUnit': ing.purchaseUnit,
-                'estimatedBase': ing.totalForChildren(estChildren),
-                'actualBase': ing.totalForChildren(actChildren),
-                'estimatedPurchase':
-                ing.totalForChildrenInPurchaseUnit(estChildren),
-                'actualPurchase':
-                ing.totalForChildrenInPurchaseUnit(actChildren),
+                'estInfCrudo': estInfCrudo,
+                'actInfCrudo': actInfCrudo,
+                'estInfCocinado': estInfCocinado,
+                'actInfCocinado': actInfCocinado,
+                'estPrimCrudo': estPrimCrudo,
+                'actPrimCrudo': actPrimCrudo,
+                'estPrimCocinado': estPrimCocinado,
+                'actPrimCocinado': actPrimCocinado,
+                'estInfCompra': ing.totalInfantilInPurchaseUnit(estInf),
+                'actInfCompra': ing.totalInfantilInPurchaseUnit(actInf),
+                'estPrimCompra': ing.totalPrimariaInPurchaseUnit(estPrim),
+                'actPrimCompra': ing.totalPrimariaInPurchaseUnit(actPrim),
               });
             }
           }
+
           comparison.sort((a, b) => a['name'].compareTo(b['name']));
 
           if (comparison.isEmpty) {
@@ -73,57 +93,116 @@ class DailyComparisonPage extends StatelessWidget {
             itemCount: comparison.length,
             itemBuilder: (context, index) {
               final item = comparison[index];
-              final diffPurchase =
-                  item['actualPurchase'] - item['estimatedPurchase'];
+              final diffInfCompra =
+                  item['actInfCompra'] - item['estInfCompra'];
+              final diffPrimCompra =
+                  item['actPrimCompra'] - item['estPrimCompra'];
 
               return Card(
-                margin: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 6),
+                elevation: 3,
+                margin:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // 🔹 Columna izquierda: nombre
-                      Expanded(
-                        flex: 2,
+                      Text(item['name'],
+                          style: const TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87)),
+                      const SizedBox(height: 8),
+                      Text("Unidad base: ${item['unit']}",
+                          style: const TextStyle(
+                              fontSize: 15, color: Colors.black54)),
+                      Text("Unidad compra: ${item['purchaseUnit']}",
+                          style: const TextStyle(
+                              fontSize: 15, color: Colors.black54)),
+                      const SizedBox(height: 10),
+
+                      /// 🔹 BLOQUE INFANTIL
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.blue[50],
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        padding: const EdgeInsets.all(10),
+                        margin:
+                        const EdgeInsets.symmetric(vertical: 4),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(item['name'],
-                                style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold)),
-                            Text("Unidad base: ${item['unit']}",
-                                style: const TextStyle(fontSize: 16)),
-                            Text("Unidad compra: ${item['purchaseUnit']}",
-                                style: const TextStyle(fontSize: 16)),
+                            const Text("👶 Infantil",
+                                style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blueAccent)),
+                            const SizedBox(height: 6),
+                            Text(
+                                "Pedido crudo: ${item['estInfCrudo'].toStringAsFixed(2)} ${item['unit']}",
+                                style: const TextStyle(fontSize: 14)),
+                            Text(
+                                "Usado crudo: ${item['actInfCrudo'].toStringAsFixed(2)} ${item['unit']}",
+                                style: const TextStyle(fontSize: 14)),
+                            Text(
+                                "Pedido cocinado: ${item['estInfCocinado'].toStringAsFixed(2)} ${item['unit']}",
+                                style: const TextStyle(fontSize: 14)),
+                            Text(
+                                "Usado cocinado: ${item['actInfCocinado'].toStringAsFixed(2)} ${item['unit']}",
+                                style: const TextStyle(fontSize: 14)),
+                            const SizedBox(height: 4),
+                            Text(
+                              _formatDiff(diffInfCompra,
+                                  item['purchaseUnit']),
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.blue),
+                            ),
                           ],
                         ),
                       ),
-                      // 🔹 Columna derecha: cantidades
-                      Expanded(
-                        flex: 3,
+
+                      /// 🔹 BLOQUE PRIMARIA
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.orange[50],
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        padding: const EdgeInsets.all(10),
+                        margin:
+                        const EdgeInsets.symmetric(vertical: 4),
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            const Text("🧒 Primaria",
+                                style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.deepOrange)),
+                            const SizedBox(height: 6),
                             Text(
-                              "Pedido: ${item['estimatedBase'].toStringAsFixed(2)} ${item['unit']} "
-                                  "(${item['estimatedPurchase'].toStringAsFixed(2)} ${item['purchaseUnit']})",
-                              style: const TextStyle(fontSize: 16),
-                            ),
+                                "Pedido crudo: ${item['estPrimCrudo'].toStringAsFixed(2)} ${item['unit']}",
+                                style: const TextStyle(fontSize: 14)),
                             Text(
-                              "Uso real: ${item['actualBase'].toStringAsFixed(2)} ${item['unit']} "
-                                  "(${item['actualPurchase'].toStringAsFixed(2)} ${item['purchaseUnit']})",
-                              style: const TextStyle(fontSize: 16),
-                            ),
+                                "Usado crudo: ${item['actPrimCrudo'].toStringAsFixed(2)} ${item['unit']}",
+                                style: const TextStyle(fontSize: 14)),
                             Text(
-                              _formatDiff(diffPurchase,
+                                "Pedido cocinado: ${item['estPrimCocinado'].toStringAsFixed(2)} ${item['unit']}",
+                                style: const TextStyle(fontSize: 14)),
+                            Text(
+                                "Usado cocinado: ${item['actPrimCocinado'].toStringAsFixed(2)} ${item['unit']}",
+                                style: const TextStyle(fontSize: 14)),
+                            const SizedBox(height: 4),
+                            Text(
+                              _formatDiff(diffPrimCompra,
                                   item['purchaseUnit']),
                               style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.deepOrange),
                             ),
                           ],
                         ),

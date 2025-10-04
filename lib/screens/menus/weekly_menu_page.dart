@@ -40,6 +40,68 @@ class _WeeklyMenuPageState extends State<WeeklyMenuPage> {
     weekStart = widget.menu.weekStart;
   }
 
+  /// 🔹 Diálogo para editar niños de un grupo
+  void _editChildrenDialog(String day, int currentChildren, String grupo,
+      {bool isActual = false}) {
+    final numCtrl = TextEditingController(
+      text: currentChildren > 0 ? currentChildren.toString() : "",
+    );
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+            "${isActual ? "Niños reales" : "Niños estimados"} ($grupo - $day)"),
+        content: TextField(
+          controller: numCtrl,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(labelText: "Número de niños"),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancelar"),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final numChildren = int.tryParse(numCtrl.text) ?? -1;
+
+              if (numChildren < 0) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text("Introduce un número válido de niños")),
+                );
+                return;
+              }
+
+              if (isActual) {
+                await _menuService.updateActualChildren(
+                  userId: userId,
+                  weekStart: weekStart,
+                  day: day,
+                  grupo: grupo.toLowerCase(),
+                  numChildren: numChildren,
+                );
+              } else {
+                await _menuService.updateEstimatedChildren(
+                  userId: userId,
+                  weekStart: weekStart,
+                  day: day,
+                  grupo: grupo.toLowerCase(),
+                  numChildren: numChildren,
+                );
+              }
+
+              if (context.mounted) Navigator.pop(context);
+            },
+            child: const Text("Guardar"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 🔹 Diálogo para añadir receta
   void _addRecipeDialog(String day) async {
     String query = "";
     final recipe = await showDialog<Recipe>(
@@ -68,14 +130,17 @@ class _WeeklyMenuPageState extends State<WeeklyMenuPage> {
                       stream: _recipeService.getRecipesByUser(userId),
                       builder: (context, snapshot) {
                         if (!snapshot.hasData) {
-                          return const Center(child: CircularProgressIndicator());
+                          return const Center(
+                              child: CircularProgressIndicator());
                         }
                         final recipes = snapshot.data!
-                            .where((r) => r.name.toLowerCase().contains(query))
+                            .where(
+                                (r) => r.name.toLowerCase().contains(query))
                             .toList();
 
                         if (recipes.isEmpty) {
-                          return const Center(child: Text("No hay coincidencias"));
+                          return const Center(
+                              child: Text("No hay coincidencias"));
                         }
 
                         return ListView.separated(
@@ -86,7 +151,8 @@ class _WeeklyMenuPageState extends State<WeeklyMenuPage> {
                             return ListTile(
                               title: Text(r.name),
                               trailing: IconButton(
-                                icon: const Icon(Icons.add, color: Colors.green),
+                                icon: const Icon(Icons.add,
+                                    color: Colors.green),
                                 onPressed: () =>
                                     Navigator.pop(context, r),
                               ),
@@ -112,55 +178,6 @@ class _WeeklyMenuPageState extends State<WeeklyMenuPage> {
         recipeId: recipe.id,
       );
     }
-  }
-
-  void _editChildrenDialog(String day, int currentChildren,
-      {bool isActual = false}) {
-    final numCtrl = TextEditingController(
-      text: currentChildren > 0 ? currentChildren.toString() : "",
-    );
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(isActual
-            ? "Editar nº de niños reales ($day)"
-            : "Editar nº de niños estimados ($day)"),
-        content: TextField(
-          controller: numCtrl,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: "Número de niños"),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancelar"),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final numChildren = int.tryParse(numCtrl.text) ?? 0;
-              if (isActual) {
-                await _menuService.updateActualChildren(
-                  userId: userId,
-                  weekStart: weekStart,
-                  day: day,
-                  numChildren: numChildren,
-                );
-              } else {
-                await _menuService.updateEstimatedChildren(
-                  userId: userId,
-                  weekStart: weekStart,
-                  day: day,
-                  numChildren: numChildren,
-                );
-              }
-              if (context.mounted) Navigator.pop(context);
-            },
-            child: const Text("Guardar"),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
@@ -203,7 +220,8 @@ class _WeeklyMenuPageState extends State<WeeklyMenuPage> {
           }
           final menu = menuSnapshot.data;
           if (menu == null) {
-            return const Center(child: Text("No hay menú creado para esta semana"));
+            return const Center(
+                child: Text("No hay menú creado para esta semana"));
           }
 
           return StreamBuilder<List<Recipe>>(
@@ -216,44 +234,140 @@ class _WeeklyMenuPageState extends State<WeeklyMenuPage> {
 
               return ListView(
                 children: _days.map((day) {
-                  final recipeIds = List<String>.from(menu.dailyRecipes[day] ?? []);
-                  final recipes = allRecipes.where((r) => recipeIds.contains(r.id)).toList();
+                  final recipeIds =
+                  List<String>.from(menu.dailyRecipes[day] ?? []);
+                  final recipes = allRecipes
+                      .where((r) => recipeIds.contains(r.id))
+                      .toList();
 
-                  final estChildren = menu.estimatedChildrenPerDay[day] ?? 0;
-                  final actChildren = menu.actualChildrenPerDay[day] ?? 0;
+                  final estInf =
+                      menu.estimatedChildrenInfantilPerDay[day] ?? 0;
+                  final estPrim =
+                      menu.estimatedChildrenPrimariaPerDay[day] ?? 0;
+                  final actInf =
+                      menu.actualChildrenInfantilPerDay[day] ?? 0;
+                  final actPrim =
+                      menu.actualChildrenPrimariaPerDay[day] ?? 0;
 
                   return ExpansionTile(
-                    title: Text(day),
+                    title: Text(day,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 18)),
                     children: [
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                        child: Row(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 6),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(child: Text("Estimados: $estChildren")),
-                            IconButton(
-                              icon: const Icon(Icons.edit, color: Colors.orange),
-                              onPressed: () => _editChildrenDialog(day, estChildren, isActual: false),
-                            ),
-                            Expanded(child: Text("Reales: $actChildren")),
-                            IconButton(
-                              icon: const Icon(Icons.edit, color: Colors.green),
-                              onPressed: () => _editChildrenDialog(day, actChildren, isActual: true),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.bar_chart, color: Colors.blue),
-                              tooltip: "Comparar día",
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => DailyComparisonPage(menu: menu, day: day),
+                            /// 🔹 Sección Infantil
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.blue[50],
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              padding: const EdgeInsets.all(8),
+                              margin: const EdgeInsets.symmetric(vertical: 6),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text("👶 Infantil",
+                                      style: TextStyle(
+                                          fontSize: 17,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.blueAccent)),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                          child:
+                                          Text("Estimados: $estInf")),
+                                      IconButton(
+                                        icon: const Icon(Icons.edit,
+                                            color: Colors.orange),
+                                        onPressed: () => _editChildrenDialog(
+                                            day, estInf, "Infantil",
+                                            isActual: false),
+                                      ),
+                                      Expanded(
+                                          child: Text("Reales: $actInf")),
+                                      IconButton(
+                                        icon: const Icon(Icons.edit,
+                                            color: Colors.green),
+                                        onPressed: () => _editChildrenDialog(
+                                            day, actInf, "Infantil",
+                                            isActual: true),
+                                      ),
+                                    ],
                                   ),
-                                );
-                              },
+                                ],
+                              ),
+                            ),
+
+                            /// 🔹 Sección Primaria
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.orange[50],
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              padding: const EdgeInsets.all(8),
+                              margin: const EdgeInsets.symmetric(vertical: 6),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text("🧒 Primaria",
+                                      style: TextStyle(
+                                          fontSize: 17,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.deepOrange)),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                          child:
+                                          Text("Estimados: $estPrim")),
+                                      IconButton(
+                                        icon: const Icon(Icons.edit,
+                                            color: Colors.orange),
+                                        onPressed: () => _editChildrenDialog(
+                                            day, estPrim, "Primaria",
+                                            isActual: false),
+                                      ),
+                                      Expanded(
+                                          child: Text("Reales: $actPrim")),
+                                      IconButton(
+                                        icon: const Icon(Icons.edit,
+                                            color: Colors.green),
+                                        onPressed: () => _editChildrenDialog(
+                                            day, actPrim, "Primaria",
+                                            isActual: true),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            /// 🔹 Botón de comparación del día completo
+                            Center(
+                              child: IconButton(
+                                icon: const Icon(Icons.bar_chart,
+                                    color: Colors.blue, size: 30),
+                                tooltip: "Comparar día completo",
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => DailyComparisonPage(
+                                          menu: menu, day: day),
+                                    ),
+                                  );
+                                },
+                              ),
                             ),
                           ],
                         ),
                       ),
+
+                      // 🔹 Listado de recetas del día
                       ListView.separated(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
@@ -262,24 +376,29 @@ class _WeeklyMenuPageState extends State<WeeklyMenuPage> {
                         itemBuilder: (context, i) {
                           final recipe = recipes[i];
                           return ListTile(
-                            title: Text(recipe.name, style: const TextStyle(fontSize: 18)),
-                            subtitle: Text("${recipe.ingredients.length} ingredientes"),
+                            title: Text(recipe.name,
+                                style: const TextStyle(fontSize: 18)),
+                            subtitle: Text(
+                                "${recipe.ingredients.length} ingredientes"),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
-                                  icon: const Icon(Icons.edit, color: Colors.blue),
+                                  icon: const Icon(Icons.edit,
+                                      color: Colors.blue),
                                   onPressed: () {
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
-                                        builder: (_) => RecipeDetailPage(recipe: recipe),
+                                        builder: (_) => RecipeDetailPage(
+                                            recipe: recipe),
                                       ),
                                     );
                                   },
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.delete, color: Colors.red),
+                                  icon: const Icon(Icons.delete,
+                                      color: Colors.red),
                                   onPressed: () {
                                     _menuService.removeRecipeIdFromDay(
                                       userId: userId,

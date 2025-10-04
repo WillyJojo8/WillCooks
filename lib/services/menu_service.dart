@@ -16,7 +16,7 @@ class MenuService {
     });
   }
 
-  /// 🔹 Crear menú vacío
+  /// 🔹 Crear menú vacío con estructura nueva (infantil / primaria)
   Future<void> createEmptyMenu({
     required String userId,
     required DateTime weekStart,
@@ -34,9 +34,13 @@ class MenuService {
       feFin: feFin,
       name: name,
       userId: userId,
-      dailyRecipes: {for (var d in days) d: <String>[]}, // 🔹 listas de IDs
-      estimatedChildrenPerDay: {for (var d in days) d: 0},
-      actualChildrenPerDay: {for (var d in days) d: 0},
+      dailyRecipes: {for (var d in days) d: <String>[]},
+
+      // 🔹 Nuevos campos separados por grupo y tipo
+      estimatedChildrenInfantilPerDay: {for (var d in days) d: 0},
+      estimatedChildrenPrimariaPerDay: {for (var d in days) d: 0},
+      actualChildrenInfantilPerDay: {for (var d in days) d: 0},
+      actualChildrenPrimariaPerDay: {for (var d in days) d: 0},
     );
 
     await menusRef.doc(id).set(menu.toMap());
@@ -68,29 +72,45 @@ class MenuService {
     });
   }
 
-  /// 🔹 Actualizar niños reales
-  Future<void> updateActualChildren({
-    required String userId,
-    required DateTime weekStart,
-    required String day,
-    required int numChildren,
-  }) async {
-    final id = _weekKey(weekStart, userId);
-    await menusRef.doc(id).update({
-      "actualChildrenPerDay.$day": numChildren,
-    });
-  }
-
-  /// 🔹 Actualizar niños estimados
+  /// 🔹 Actualizar niños estimados por grupo
   Future<void> updateEstimatedChildren({
     required String userId,
     required DateTime weekStart,
     required String day,
+    required String grupo, // "infantil" o "primaria"
     required int numChildren,
   }) async {
     final id = _weekKey(weekStart, userId);
-    await menusRef.doc(id).update({
-      "estimatedChildrenPerDay.$day": numChildren,
-    });
+    String field;
+    if (grupo == "infantil") {
+      field = "estimatedChildrenInfantilPerDay.$day";
+    } else if (grupo == "primaria") {
+      field = "estimatedChildrenPrimariaPerDay.$day";
+    } else {
+      throw ArgumentError("Grupo inválido: debe ser 'infantil' o 'primaria'");
+    }
+
+    await menusRef.doc(id).update({field: numChildren});
+  }
+
+  /// 🔹 Actualizar niños reales por grupo
+  Future<void> updateActualChildren({
+    required String userId,
+    required DateTime weekStart,
+    required String day,
+    required String grupo, // "infantil" o "primaria"
+    required int numChildren,
+  }) async {
+    final id = _weekKey(weekStart, userId);
+    String field;
+    if (grupo == "infantil") {
+      field = "actualChildrenInfantilPerDay.$day";
+    } else if (grupo == "primaria") {
+      field = "actualChildrenPrimariaPerDay.$day";
+    } else {
+      throw ArgumentError("Grupo inválido: debe ser 'infantil' o 'primaria'");
+    }
+
+    await menusRef.doc(id).update({field: numChildren});
   }
 }
