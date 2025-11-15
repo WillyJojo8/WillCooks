@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../models/ingredient_base.dart';
 import '../../services/ingredient_base_service.dart';
 
+import '../../utils/units.dart'; // <-- ajusta el path real
+
 class IngredientBaseListPage extends StatefulWidget {
   const IngredientBaseListPage({super.key});
 
@@ -52,18 +54,16 @@ class _IngredientBaseListPageState extends State<IngredientBaseListPage> {
             itemBuilder: (context, i) {
               final ing = ingredients[i];
               return Card(
-                margin:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 child: ListTile(
                   title: Text(
                     ing.name,
-                    style: const TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.w600),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                   ),
                   subtitle: Text(
                     "Unidad: ${ing.defaultUnit}, Compra: ${ing.purchaseUnit}, "
-                        "Factor: ${ing.conversionFactor}"
-                        "${ing.density != null ? ", Densidad: ${ing.density}" : ""}",
+                        "Factor de conversión (auto): ${ing.conversionFactor}"
+                        "${ing.density != null ? ", Densidad (g/ml): ${ing.density}" : ""}",
                   ),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -91,109 +91,271 @@ class _IngredientBaseListPageState extends State<IngredientBaseListPage> {
     );
   }
 
-  /// 🔹 Crear nuevo ingrediente
+  /// 🔹 Crear nuevo ingrediente (con selects y factor auto)
   void _showAddDialog(BuildContext context) {
     final nameCtrl = TextEditingController();
-    final unitCtrl = TextEditingController();
-    final purchaseUnitCtrl = TextEditingController();
+
+    // Seguimos guardando como String en BD, pero en UI usamos enum Unit
+    Unit selectedUnit = Unit.g;            // por defecto g (tu caso 99%)
+    Unit selectedPurchase = Unit.kg;       // por defecto kg para compra
     final factorCtrl = TextEditingController();
     final densityCtrl = TextEditingController();
 
+    // refresca el factor auto cada vez que cambian unidad/compra/densidad
+    void refreshFactor() {
+      final d = double.tryParse(densityCtrl.text);
+      final f = computeConversionFactor(
+        unit: selectedUnit,
+        purchaseUnit: selectedPurchase,
+        densityGPerMl: d,
+      );
+      factorCtrl.text = f == null ? '' : trimDouble(f);
+    }
+
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Nuevo ingrediente base"),
-        content: _buildForm(
-          nameCtrl: nameCtrl,
-          unitCtrl: unitCtrl,
-          purchaseUnitCtrl: purchaseUnitCtrl,
-          factorCtrl: factorCtrl,
-          densityCtrl: densityCtrl,
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cancelar")),
-          ElevatedButton(
-            child: const Text("Guardar"),
-            onPressed: () async {
-              final id = nameCtrl.text.toLowerCase().replaceAll(" ", "_");
-              final existing = await _service.getAll().first;
-              final alreadyExists = existing.any((e) => e.id == id);
+      builder: (_) => StatefulBuilder(
+        builder: (context, setStateDialog) {
+          final needsDensity = isCrossType(selectedUnit, selectedPurchase);
 
-              if (alreadyExists) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text("⚠️ Ya existe un ingrediente con el id '$id'"),
-                      backgroundColor: Colors.orange,
+          return AlertDialog(
+            title: const Text("Nuevo ingrediente base"),
+            content: SingleChildScrollView(
+              child: Column(
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(labelText: "Nombre"),
+                  ),
+
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<Unit>(
+                    value: selectedUnit,
+                    items: Unit.values
+                        .map((u) => DropdownMenuItem(value: u, child: Text(u.name)))
+                        .toList(),
+                    onChanged: (u) {
+                      setStateDialog(() {
+                        selectedUnit = u ?? Unit.g;
+                        refreshFactor();
+                      });
+                    },
+                    decoration: const InputDecoration(labelText: "Unidad base (g, ml, ud)"),
+                  ),
+
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<Unit>(
+                    value: selectedPurchase,
+                    items: Unit.values
+                        .map((u) => DropdownMenuItem(value: u, child: Text(u.name)))
+                        .toList(),
+                    onChanged: (u) {
+                      setStateDialog(() {
+                        selectedPurchase = u ?? Unit.kg;
+                        refreshFactor();
+                      });
+                    },
+                    decoration: const InputDecoration(labelText: "Unidad de compra (kg, L, ud)"),
+                  ),
+
+                  const SizedBox(height: 12),
+                  if (needsDensity)
+                    TextField(
+                      controller: densityCtrl,
+                      decoration: const InputDecoration(
+                        labelText: "Densidad (g/ml)",
+                        helperText: "Necesaria para masa↔volumen. Ej.: aceite ≈ 0.92",
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => setStateDialog(() { refreshFactor(); }), // ✅
                     ),
-                  );
-                }
-                return;
-              }
 
-              final ing = IngredientBase(
-                id: id,
-                name: nameCtrl.text,
-                defaultUnit: unitCtrl.text,
-                purchaseUnit: purchaseUnitCtrl.text,
-                conversionFactor: double.tryParse(factorCtrl.text) ?? 1,
-                density: densityCtrl.text.isNotEmpty
-                    ? double.tryParse(densityCtrl.text)
-                    : null,
-              );
-              await _service.addIngredientBase(ing);
-              if (context.mounted) Navigator.pop(context);
-            },
-          )
-        ],
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: factorCtrl,
+                    readOnly: true,
+                    decoration: const InputDecoration(
+                      labelText: "Conversión Unidades",
+                      helperText: "Cuántas unidades base caben en 1 unidad de compra",
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Cancelar"),
+              ),
+              ElevatedButton(
+                child: const Text("Guardar"),
+                onPressed: () async {
+                  // validar densidad si hace falta
+                  if (needsDensity && double.tryParse(densityCtrl.text) == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Para masa↔volumen necesitas densidad (g/ml).")),
+                    );
+                    return;
+                  }
+                  // calcula por seguridad
+                  refreshFactor();
+
+                  final id = nameCtrl.text.toLowerCase().trim().replaceAll(RegExp(r'\s+'), "_");
+                  final existing = await _service.getAll().first;
+                  final alreadyExists = existing.any((e) => e.id == id);
+
+                  if (alreadyExists) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text("⚠️ Ya existe un ingrediente con el id '$id'"),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                    }
+                    return;
+                  }
+
+                  final ing = IngredientBase(
+                    id: id,
+                    name: nameCtrl.text.trim(),
+                    defaultUnit: unitToString(selectedUnit),      // String en BD
+                    purchaseUnit: unitToString(selectedPurchase), // String en BD
+                    conversionFactor: double.tryParse(factorCtrl.text) ?? 1,
+                    density: double.tryParse(densityCtrl.text),   // null si no aplica
+                  );
+                  await _service.addIngredientBase(ing);
+                  if (context.mounted) Navigator.pop(context);
+                },
+              )
+            ],
+          );
+        },
       ),
     );
   }
 
-  /// 🔹 Editar ingrediente existente
+  /// 🔹 Editar ingrediente existente (con selects y factor auto)
   void _showEditDialog(BuildContext context, IngredientBase ing) {
     final nameCtrl = TextEditingController(text: ing.name);
-    final unitCtrl = TextEditingController(text: ing.defaultUnit);
-    final purchaseUnitCtrl = TextEditingController(text: ing.purchaseUnit);
-    final factorCtrl =
-    TextEditingController(text: ing.conversionFactor.toString());
+    Unit selectedUnit = parseUnit(ing.defaultUnit) ?? Unit.g;
+    Unit selectedPurchase = parseUnit(ing.purchaseUnit) ?? Unit.kg;
     final densityCtrl = TextEditingController(text: ing.density?.toString() ?? "");
+    final factorCtrl = TextEditingController();
+
+    void refreshFactor() {
+      final d = double.tryParse(densityCtrl.text);
+      final f = computeConversionFactor(
+        unit: selectedUnit,
+        purchaseUnit: selectedPurchase,
+        densityGPerMl: d,
+      );
+      factorCtrl.text = f == null ? '' : trimDouble(f);
+    }
+
+    // Inicializa factor según lo actual
+    refreshFactor();
 
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text("Editar ${ing.name}"),
-        content: _buildForm(
-          nameCtrl: nameCtrl,
-          unitCtrl: unitCtrl,
-          purchaseUnitCtrl: purchaseUnitCtrl,
-          factorCtrl: factorCtrl,
-          densityCtrl: densityCtrl,
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cancelar")),
-          ElevatedButton(
-            child: const Text("Guardar cambios"),
-            onPressed: () async {
-              final updated = IngredientBase(
-                id: ing.id,
-                name: nameCtrl.text,
-                defaultUnit: unitCtrl.text,
-                purchaseUnit: purchaseUnitCtrl.text,
-                conversionFactor: double.tryParse(factorCtrl.text) ?? 1,
-                density: densityCtrl.text.isNotEmpty
-                    ? double.tryParse(densityCtrl.text)
-                    : null,
-              );
-              await _service.updateIngredientBase(updated);
-              if (context.mounted) Navigator.pop(context);
-            },
-          )
-        ],
+      builder: (_) => StatefulBuilder(
+        builder: (context, setStateDialog) {
+          final needsDensity = isCrossType(selectedUnit, selectedPurchase);
+
+          return AlertDialog(
+            title: Text("Editar ${ing.name}"),
+            content: SingleChildScrollView(
+              child: Column(
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(labelText: "Nombre"),
+                  ),
+
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<Unit>(
+                    value: selectedUnit,
+                    items: Unit.values
+                        .map((u) => DropdownMenuItem(value: u, child: Text(u.name)))
+                        .toList(),
+                    onChanged: (u) {
+                      setStateDialog(() {
+                        selectedUnit = u ?? selectedUnit;
+                        refreshFactor();
+                      });
+                    },
+                    decoration: const InputDecoration(labelText: "Unidad base (g, ml, ud)"),
+                  ),
+
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<Unit>(
+                    value: selectedPurchase,
+                    items: Unit.values
+                        .map((u) => DropdownMenuItem(value: u, child: Text(u.name)))
+                        .toList(),
+                    onChanged: (u) {
+                      setStateDialog(() {
+                        selectedPurchase = u ?? selectedPurchase;
+                        refreshFactor();
+                      });
+                    },
+                    decoration: const InputDecoration(labelText: "Unidad de compra (kg, L, ud)"),
+                  ),
+
+                  const SizedBox(height: 12),
+                  if (needsDensity)
+                    TextField(
+                      controller: densityCtrl,
+                      decoration: const InputDecoration(
+                        labelText: "Densidad (g/ml)",
+                        helperText: "Necesaria para masa↔volumen. Ej.: aceite ≈ 0.92",
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => setStateDialog(() { refreshFactor(); }), // ✅
+                    ),
+
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: factorCtrl,
+                    readOnly: true,
+                    decoration: const InputDecoration(
+                      labelText: "Factor de conversión (auto)",
+                      helperText: "Cuántas unidades base caben en 1 unidad de compra",
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Cancelar")),
+              ElevatedButton(
+                child: const Text("Guardar cambios"),
+                onPressed: () async {
+                  if (needsDensity && double.tryParse(densityCtrl.text) == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Para masa↔volumen necesitas densidad (g/ml).")),
+                    );
+                    return;
+                  }
+                  refreshFactor();
+
+                  final updated = IngredientBase(
+                    id: ing.id,
+                    name: nameCtrl.text.trim(),
+                    defaultUnit: unitToString(selectedUnit),
+                    purchaseUnit: unitToString(selectedPurchase),
+                    conversionFactor: double.tryParse(factorCtrl.text) ?? 1,
+                    density: double.tryParse(densityCtrl.text),
+                  );
+                  await _service.updateIngredientBase(updated);
+                  if (context.mounted) Navigator.pop(context);
+                },
+              )
+            ],
+          );
+        },
       ),
     );
   }
@@ -217,41 +379,6 @@ class _IngredientBaseListPageState extends State<IngredientBaseListPage> {
               if (context.mounted) Navigator.pop(context);
             },
           )
-        ],
-      ),
-    );
-  }
-
-  /// 🔹 Formulario común
-  Widget _buildForm({
-    required TextEditingController nameCtrl,
-    required TextEditingController unitCtrl,
-    required TextEditingController purchaseUnitCtrl,
-    required TextEditingController factorCtrl,
-    required TextEditingController densityCtrl,
-  }) {
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          TextField(
-              controller: nameCtrl,
-              decoration: const InputDecoration(labelText: "Nombre")),
-          TextField(
-              controller: unitCtrl,
-              decoration:
-              const InputDecoration(labelText: "Unidad base (g, ml)")),
-          TextField(
-              controller: purchaseUnitCtrl,
-              decoration: const InputDecoration(labelText: "Unidad de compra (kg, L)")),
-          TextField(
-              controller: factorCtrl,
-              decoration: const InputDecoration(labelText: "Factor conversión"),
-              keyboardType: TextInputType.number),
-          TextField(
-              controller: densityCtrl,
-              decoration:
-              const InputDecoration(labelText: "Densidad (opcional)"),
-              keyboardType: TextInputType.number),
         ],
       ),
     );

@@ -82,14 +82,15 @@ class Ingredient {
   /// Devuelve el peso cocinado total, dado el total crudo.
   double totalCocinado(double totalCrudo) => totalCrudo * cookingFactor;
 
-  /// Convierte una cantidad base (g o ml) a unidad de compra (kg o L)
+  /// Convierte una cantidad en la unidad base del ingrediente (g o ml)
+  /// a la unidad de compra (kg, L, ud).
+  ///
+  /// IMPORTANTE: `conversionFactor` debe representar:
+  ///   cuántas "unit" (g/ml/ud) hay en 1 "purchaseUnit".
+  ///   Ej.: g->kg => 1000 ; g->L (aceite 0.92) => 920 ; ml->kg (dens 0.92) => 1000/0.92 ≈ 1086.956
   double _convertToPurchaseUnit(double totalBase) {
-    if (unit == "g" && purchaseUnit == "L" && density != null) {
-      return (totalBase / density!) / conversionFactor;
-    } else if (unit == "ml" && purchaseUnit == "kg" && density != null) {
-      return (totalBase * density!) / conversionFactor;
-    } else {
-      return totalBase / conversionFactor;
-    }
+    if (conversionFactor <= 0) return 0;
+    return totalBase / conversionFactor; // ❗ nada de densidad aquí
   }
+
 }
